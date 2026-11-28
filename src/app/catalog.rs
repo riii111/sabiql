@@ -1,8 +1,6 @@
 use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
-use crate::model::shared::input_mode::InputMode;
-use crate::policy::FeaturePolicy;
 use crate::update::input::keymap::{Hint, HintSurface, KeyContext, current_hints, reference_hints};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,13 +19,12 @@ pub const HELP_KEY_DESC_GAP: usize = 2;
 impl HelpDocument {
     pub fn from_state(state: &AppState) -> Self {
         let filter = state.ui.help().filter();
-        let context = state.ui.help().origin().cloned().unwrap_or_else(|| {
-            KeyContext::for_scope(
-                InputMode::Normal,
-                state.settings.saved_keymap_preset(),
-                &FeaturePolicy::new(&state.session.active_engine_feature_profile()),
-            )
-        });
+        let context = state
+            .ui
+            .help()
+            .origin()
+            .cloned()
+            .unwrap_or_else(|| KeyContext::for_browse_state(state));
         Self::new(context, filter.content(), filter.cursor())
     }
 
@@ -250,8 +247,10 @@ mod tests {
     use crate::model::connection::setup::ConnectionField;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::model::shared::focused_pane::FocusedPane;
+    use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::KeymapPreset;
     use crate::model::sql_editor::modal::SqlModalTab;
+    use crate::policy::FeaturePolicy;
     use crate::policy::FeatureRequirement;
     use crate::test_support;
     use crate::test_support::endpoint;
@@ -967,9 +966,11 @@ mod tests {
 
     #[test]
     fn connection_setup_cleartext_auth_is_a_dropdown() {
-        let policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
-        let context = KeyContext::for_scope(InputMode::ConnectionSetup, KeymapPreset::Ide, &policy)
-            .with_connection_setup(ConnectionField::CleartextAuth, false);
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::ConnectionSetup);
+        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        state.connection_setup.focused_field = ConnectionField::CleartextAuth;
+        let context = KeyContext::from_state(&state);
         let document = HelpDocument::new(context, "", 0);
         let rows = document.sections()[0].rows();
         assert!(

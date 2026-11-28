@@ -11,7 +11,7 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let mut navigation = list_navigation(ListTarget::ConnectionList, true);
     navigation.short = "Nav";
     navigation.description = "Select connection";
-    navigation.surfaces = &[HintSurface::Current, HintSurface::Connections];
+    navigation.surfaces = [HintSurface::Current, HintSurface::Connections].to_vec();
     let button_surfaces = &[
         HintSurface::Border,
         HintSurface::Current,
@@ -44,12 +44,12 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Edit",
             description: "Edit connection",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
-                surface != HintSurface::Border || !context.is_service_selected()
+                surface != HintSurface::Border || !context.is_service_selected
             }),
-            surfaces: button_surfaces,
+            surfaces: (button_surfaces).to_vec(),
         },
         Row {
             bindings: vec![Binding::action(
@@ -58,12 +58,12 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Delete",
             description: "Delete connection",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
-                surface != HintSurface::Border || !context.is_service_selected()
+                surface != HintSurface::Border || !context.is_service_selected
             }),
-            surfaces: button_surfaces,
+            surfaces: (button_surfaces).to_vec(),
         },
         Row::new(
             vec![Binding::action(

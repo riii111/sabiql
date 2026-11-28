@@ -13,14 +13,55 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::Action;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Key bindings depend on independent state flags."
+)]
 pub struct KeyContext {
     pub(super) preset: KeymapPreset,
-    mode: InputMode,
+    pub(super) mode: InputMode,
     pub(super) json_searching: bool,
-    policy: FeaturePolicy,
-    scope: Scope,
-    pending_prefix: Option<Prefix>,
-    history_available: bool,
+    pub(super) policy: FeaturePolicy,
+    pub(super) pending_prefix: Option<Prefix>,
+    label: &'static str,
+    pub(super) is_sql_editing: bool,
+    pub(super) browse_pane: BrowsePane,
+    pub(super) browse_focused: bool,
+    pub(super) browse_read_only: bool,
+    pub(super) browse_csv_available: bool,
+    pub(super) browse_connection_error: bool,
+    pub(super) browse_inspector_ddl: bool,
+    pub(super) browse_staged_delete: bool,
+    pub(super) browse_draft: bool,
+    pub(super) browse_yank_pending: bool,
+    pub(super) browse_delete_pending: bool,
+    pub(super) browse_selected_row: bool,
+    pub(super) browse_selected_cell: bool,
+    pub(super) browse_connected: bool,
+    pub(super) browse_can_edit_cell: bool,
+    pub(super) browse_can_write: bool,
+    pub(super) browse_can_paginate: bool,
+    pub(super) browse_multiple_inspector_tabs: bool,
+    pub(super) sql_confirmation: Option<SqlConfirmation>,
+    pub(super) is_sql_confirmation_matched: bool,
+    pub(super) is_sql_completion_visible: bool,
+    pub(super) can_open_history: bool,
+    pub(super) sql_tab: Option<SqlModalTab>,
+    pub(super) sql_has_multiple_tabs: bool,
+    pub(super) sql_compare_can_yank: bool,
+    pub(super) cancel_unmatched_sql_prefix: bool,
+    pub(super) can_run_diagnostics: bool,
+    pub(super) is_cell_detail_searching: bool,
+    pub(super) is_help_editing: bool,
+    pub(super) is_confirm_blocked: bool,
+    pub(super) is_service_selected: bool,
+    pub(super) can_retry_connection: bool,
+    pub(super) is_setup_dropdown_open: bool,
+    pub(super) is_setup_dropdown_field: bool,
+    pub(super) is_setup_text_focused: bool,
+    pub(super) is_setup_editing: bool,
+    pub(super) is_settings_editing: bool,
+    pub(super) is_custom_browser_selected: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,18 +156,189 @@ impl KeyContext {
     pub fn mode(&self) -> InputMode {
         self.mode
     }
-
     pub(crate) fn preset(&self) -> KeymapPreset {
         self.preset
     }
-
     pub(crate) fn policy(&self) -> &FeaturePolicy {
         &self.policy
     }
-
     pub fn label(&self) -> &'static str {
-        match self.mode {
-            InputMode::Normal => match self.browse_pane() {
+        self.label
+    }
+
+    pub fn from_state(state: &AppState) -> Self {
+        Self::from_mode(state, state.input_mode())
+    }
+    pub fn for_browse_state(state: &AppState) -> Self {
+        Self::from_mode(state, InputMode::Normal)
+    }
+    fn from_mode(state: &AppState, mode: InputMode) -> Self {
+        let scope = match mode {
+            InputMode::Normal => browse_scope(state),
+            InputMode::SqliteDiagnostics => Scope::Diagnostics {
+                can_run: state.sqlite_diagnostics.can_run_quick_check(),
+            },
+            InputMode::CellDetail => Scope::CellDetail {
+                searching: state.cell_detail.search().is_active(),
+            },
+            InputMode::Help => Scope::Help {
+                editing: state.ui.help().mode() == HelpMode::EditingFilter,
+            },
+            InputMode::ConfirmDialog => Scope::Confirm {
+                blocked: state
+                    .result_interaction
+                    .pending_write_preview()
+                    .is_some_and(|preview| preview.guardrail.blocked),
+            },
+            InputMode::ConnectionSelector => Scope::ConnectionSelector {
+                service_selected: is_service_selected(
+                    state.connection_list_items(),
+                    state.ui.connection_list_selected(),
+                ),
+            },
+            InputMode::ConnectionError => Scope::ConnectionError {
+                can_retry: state.can_retry_connection_error(),
+            },
+            InputMode::ConnectionSetup => Scope::ConnectionSetup {
+                dropdown_open: state.connection_setup.has_open_dropdown(),
+                dropdown_field: is_dropdown_field(state.connection_setup.focused_field()),
+                text_focused: state.connection_setup.focused_input().is_some(),
+                editing: state.connection_setup.is_edit_mode(),
+            },
+            InputMode::Settings => Scope::Settings {
+                editing: state.settings.is_editing_custom_er_browser(),
+                custom_selected: state.settings.section() == SettingsSection::ErDiagram
+                    && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom,
+            },
+            InputMode::SqlModal if matches!(state.sql_modal.status(), SqlModalStatus::Editing) => {
+                Scope::SqlEditing {
+                    completion_visible: state.sql_modal.completion().visible
+                        && !state.sql_modal.completion().candidates.is_empty(),
+                }
+            }
+            InputMode::SqlModal
+                if matches!(
+                    state.sql_modal.status(),
+                    SqlModalStatus::Normal | SqlModalStatus::Success(_) | SqlModalStatus::Error(_)
+                ) =>
+            {
+                let profile = state.session.active_engine_feature_profile();
+                Scope::SqlNormal {
+                    tab: profile.normalize_sql_modal_tab(state.sql_modal.active_tab()),
+                    multiple_tabs: profile.supported_sql_modal_tabs().len() > 1,
+                    compare_can_yank: state.explain.can_yank_compare(),
+                }
+            }
+            InputMode::SqlModal => {
+                sql_confirmation_scope(state.sql_modal.status()).unwrap_or(Scope::Other)
+            }
+            _ => Scope::Other,
+        };
+        let browse = match scope {
+            Scope::Browse(browse) => browse,
+            _ => BrowseScope::default(),
+        };
+        let history_available = state.can_open_query_history();
+        let json_searching = state.json_detail.search().is_active();
+        let is_sql_editing = matches!(scope, Scope::SqlEditing { .. });
+        let browse_pane = browse.pane;
+        let browse_focused = browse.focused;
+        let browse_read_only = browse.read_only;
+        let browse_csv_available = browse.csv_available;
+        let browse_connection_error = browse.connection_error;
+        let browse_inspector_ddl = browse.inspector_ddl;
+        let browse_staged_delete = browse.staged_delete;
+        let browse_draft = browse.draft;
+        let browse_yank_pending = browse.yank_pending;
+        let browse_delete_pending = browse.delete_pending;
+        let browse_selected_row = browse.selected_row;
+        let browse_selected_cell = browse.selected_cell;
+        let browse_connected = browse.connected;
+        let browse_can_edit_cell = browse.can_edit_cell;
+        let browse_can_write = browse.can_write;
+        let browse_can_paginate = browse.can_paginate;
+        let browse_multiple_inspector_tabs = browse.multiple_inspector_tabs;
+        let sql_confirmation = match scope {
+            Scope::SqlConfirmation { kind, .. } => Some(kind),
+            _ => None,
+        };
+        let is_sql_confirmation_matched =
+            matches!(scope, Scope::SqlConfirmation { matched: true, .. });
+        let is_sql_completion_visible = matches!(
+            scope,
+            Scope::SqlEditing {
+                completion_visible: true
+            }
+        );
+        let can_open_history = history_available && !is_sql_completion_visible;
+        let sql_tab = match scope {
+            Scope::SqlNormal { tab, .. } => Some(tab),
+            _ => None,
+        };
+        let sql_has_multiple_tabs = matches!(
+            scope,
+            Scope::SqlNormal {
+                multiple_tabs: true,
+                ..
+            }
+        );
+        let sql_compare_can_yank = matches!(
+            scope,
+            Scope::SqlNormal {
+                compare_can_yank: true,
+                ..
+            }
+        );
+        let cancel_unmatched_sql_prefix = matches!(
+            scope,
+            Scope::SqlNormal {
+                tab: SqlModalTab::Plan | SqlModalTab::Compare,
+                ..
+            }
+        );
+        let can_run_diagnostics = matches!(scope, Scope::Diagnostics { can_run: true });
+        let is_cell_detail_searching = matches!(scope, Scope::CellDetail { searching: true });
+        let is_help_editing = matches!(scope, Scope::Help { editing: true });
+        let is_confirm_blocked = matches!(scope, Scope::Confirm { blocked: true });
+        let is_service_selected = matches!(
+            scope,
+            Scope::ConnectionSelector {
+                service_selected: true
+            }
+        );
+        let can_retry_connection = matches!(scope, Scope::ConnectionError { can_retry: true });
+        let is_setup_dropdown_open = matches!(
+            scope,
+            Scope::ConnectionSetup {
+                dropdown_open: true,
+                ..
+            }
+        );
+        let is_setup_dropdown_field = matches!(
+            scope,
+            Scope::ConnectionSetup {
+                dropdown_field: true,
+                ..
+            }
+        );
+        let is_setup_text_focused = matches!(
+            scope,
+            Scope::ConnectionSetup {
+                text_focused: true,
+                ..
+            }
+        );
+        let is_setup_editing = matches!(scope, Scope::ConnectionSetup { editing: true, .. });
+        let is_settings_editing = matches!(scope, Scope::Settings { editing: true, .. });
+        let is_custom_browser_selected = matches!(
+            scope,
+            Scope::Settings {
+                custom_selected: true,
+                ..
+            }
+        );
+        let label = match mode {
+            InputMode::Normal => match browse.pane {
                 BrowsePane::Explorer => "Explorer Pane",
                 BrowsePane::Inspector => "Inspector Pane",
                 BrowsePane::ResultScroll | BrowsePane::ResultCell => "Result Pane",
@@ -137,7 +349,7 @@ impl KeyContext {
             InputMode::CommandPalette => "Command Palette",
             InputMode::Settings => "Settings",
             InputMode::Help => "Help",
-            InputMode::SqlModal => match self.scope {
+            InputMode::SqlModal => match scope {
                 Scope::SqlEditing { .. } => "SQL Editor Insert",
                 Scope::SqlConfirmation { .. } => "SQL Editor Confirm",
                 Scope::SqlNormal {
@@ -161,390 +373,76 @@ impl KeyContext {
             InputMode::ConnectionSelector => "Connection Selector",
             InputMode::ErTablePicker => "ER Table Picker",
             InputMode::QueryHistoryPicker => "Query History Picker",
-            InputMode::JsonDetail if self.json_searching => "JSON Search",
+            InputMode::JsonDetail if json_searching => "JSON Search",
             InputMode::JsonDetail => "JSON Detail",
             InputMode::JsonEdit => "JSON Edit",
-            InputMode::CellDetail if self.is_cell_detail_searching() => "Cell Detail Search",
+            InputMode::CellDetail if is_cell_detail_searching => "Cell Detail Search",
             InputMode::CellDetail => "Cell Detail",
             InputMode::RowDetail => "Row Detail",
-        }
-    }
-
-    pub(super) fn is_sql_editing(&self) -> bool {
-        matches!(self.scope, Scope::SqlEditing { .. })
-    }
-
-    pub fn from_state(state: &AppState) -> Self {
+        };
         Self {
             preset: state.settings.saved_keymap_preset(),
-            mode: state.input_mode(),
-            json_searching: state.json_detail.search().is_active(),
+            mode,
+            json_searching,
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
             pending_prefix: state.ui.key_sequence.pending_prefix(),
-            history_available: state.can_open_query_history(),
-            scope: match state.input_mode() {
-                InputMode::Normal => browse_scope(state),
-                InputMode::SqliteDiagnostics => Scope::Diagnostics {
-                    can_run: state.sqlite_diagnostics.can_run_quick_check(),
-                },
-                InputMode::CellDetail => Scope::CellDetail {
-                    searching: state.cell_detail.search().is_active(),
-                },
-                InputMode::Help => Scope::Help {
-                    editing: state.ui.help().mode() == HelpMode::EditingFilter,
-                },
-                InputMode::ConfirmDialog => Scope::Confirm {
-                    blocked: state
-                        .result_interaction
-                        .pending_write_preview()
-                        .is_some_and(|preview| preview.guardrail.blocked),
-                },
-                InputMode::ConnectionSelector => Scope::ConnectionSelector {
-                    service_selected: is_service_selected(
-                        state.connection_list_items(),
-                        state.ui.connection_list_selected(),
-                    ),
-                },
-                InputMode::ConnectionError => Scope::ConnectionError {
-                    can_retry: state.can_retry_connection_error(),
-                },
-                InputMode::ConnectionSetup => Scope::ConnectionSetup {
-                    dropdown_open: state.connection_setup.has_open_dropdown(),
-                    dropdown_field: is_dropdown_field(state.connection_setup.focused_field()),
-                    text_focused: state.connection_setup.focused_input().is_some(),
-                    editing: state.connection_setup.is_edit_mode(),
-                },
-                InputMode::Settings => Scope::Settings {
-                    editing: state.settings.is_editing_custom_er_browser(),
-                    custom_selected: state.settings.section() == SettingsSection::ErDiagram
-                        && state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom,
-                },
-                InputMode::SqlModal
-                    if matches!(state.sql_modal.status(), SqlModalStatus::Editing) =>
-                {
-                    Scope::SqlEditing {
-                        completion_visible: state.sql_modal.completion().visible
-                            && !state.sql_modal.completion().candidates.is_empty(),
-                    }
-                }
-                InputMode::SqlModal
-                    if matches!(
-                        state.sql_modal.status(),
-                        SqlModalStatus::Normal
-                            | SqlModalStatus::Success(_)
-                            | SqlModalStatus::Error(_)
-                    ) =>
-                {
-                    let profile = state.session.active_engine_feature_profile();
-                    Scope::SqlNormal {
-                        tab: profile.normalize_sql_modal_tab(state.sql_modal.active_tab()),
-                        multiple_tabs: profile.supported_sql_modal_tabs().len() > 1,
-                        compare_can_yank: state.explain.can_yank_compare(),
-                    }
-                }
-                InputMode::SqlModal => {
-                    sql_confirmation_scope(state.sql_modal.status()).unwrap_or(Scope::Other)
-                }
-                _ => Scope::Other,
-            },
+            label,
+            is_sql_editing,
+            browse_pane,
+            browse_focused,
+            browse_read_only,
+            browse_csv_available,
+            browse_connection_error,
+            browse_inspector_ddl,
+            browse_staged_delete,
+            browse_draft,
+            browse_yank_pending,
+            browse_delete_pending,
+            browse_selected_row,
+            browse_selected_cell,
+            browse_connected,
+            browse_can_edit_cell,
+            browse_can_write,
+            browse_can_paginate,
+            browse_multiple_inspector_tabs,
+            sql_confirmation,
+            is_sql_confirmation_matched,
+            is_sql_completion_visible,
+            can_open_history,
+            sql_tab,
+            sql_has_multiple_tabs,
+            sql_compare_can_yank,
+            cancel_unmatched_sql_prefix,
+            can_run_diagnostics,
+            is_cell_detail_searching,
+            is_help_editing,
+            is_confirm_blocked,
+            is_service_selected,
+            can_retry_connection,
+            is_setup_dropdown_open,
+            is_setup_dropdown_field,
+            is_setup_text_focused,
+            is_setup_editing,
+            is_settings_editing,
+            is_custom_browser_selected,
         }
     }
-
-    pub(crate) fn for_scope(mode: InputMode, preset: KeymapPreset, policy: &FeaturePolicy) -> Self {
-        Self {
-            preset,
-            mode,
-            json_searching: false,
-            policy: policy.clone(),
-            pending_prefix: None,
-            history_available: true,
-            scope: match mode {
-                InputMode::SqliteDiagnostics => Scope::Diagnostics { can_run: true },
-                InputMode::CellDetail => Scope::CellDetail { searching: false },
-                InputMode::Help => Scope::Help { editing: false },
-                InputMode::ConfirmDialog => Scope::Confirm { blocked: false },
-                InputMode::ConnectionSelector => Scope::ConnectionSelector {
-                    service_selected: false,
-                },
-                InputMode::ConnectionError => Scope::ConnectionError { can_retry: false },
-                InputMode::ConnectionSetup => Scope::ConnectionSetup {
-                    dropdown_open: false,
-                    dropdown_field: true,
-                    text_focused: false,
-                    editing: false,
-                },
-                InputMode::Settings => Scope::Settings {
-                    editing: false,
-                    custom_selected: true,
-                },
-                _ => Scope::Other,
-            },
-        }
-    }
-
-    pub fn for_browse_state(state: &AppState) -> Self {
-        let mut context = Self::from_state(state);
-        if context.mode != InputMode::Normal {
-            context.mode = InputMode::Normal;
-            context.scope = browse_scope(state);
-        }
-        context
-    }
-
-    fn browse(&self) -> BrowseScope {
-        match self.scope {
-            Scope::Browse(scope) => scope,
-            _ => BrowseScope::default(),
-        }
-    }
-
-    pub(super) fn browse_pane(&self) -> BrowsePane {
-        self.browse().pane
-    }
-
-    pub(super) fn browse_focused(&self) -> bool {
-        self.browse().focused
-    }
-
-    pub(super) fn browse_read_only(&self) -> bool {
-        self.browse().read_only
-    }
-
-    pub(super) fn browse_csv_available(&self) -> bool {
-        self.browse().csv_available
-    }
-
-    pub(super) fn browse_connection_error(&self) -> bool {
-        self.browse().connection_error
-    }
-
-    pub(super) fn browse_inspector_ddl(&self) -> bool {
-        self.browse().inspector_ddl
-    }
-
-    pub(super) fn browse_staged_delete(&self) -> bool {
-        self.browse().staged_delete
-    }
-
-    pub(super) fn browse_draft(&self) -> bool {
-        self.browse().draft
-    }
-
-    pub(super) fn browse_yank_pending(&self) -> bool {
-        self.browse().yank_pending
-    }
-
-    pub(super) fn browse_delete_pending(&self) -> bool {
-        self.browse().delete_pending
-    }
-
-    pub(super) fn browse_selected_row(&self) -> bool {
-        self.browse().selected_row
-    }
-
-    pub(super) fn browse_selected_cell(&self) -> bool {
-        self.browse().selected_cell
-    }
-
-    pub(super) fn browse_connected(&self) -> bool {
-        self.browse().connected
-    }
-
-    pub(super) fn browse_can_edit_cell(&self) -> bool {
-        self.browse().can_edit_cell
-    }
-
-    pub(super) fn browse_can_write(&self) -> bool {
-        self.browse().can_write
-    }
-
-    pub(super) fn browse_can_paginate(&self) -> bool {
-        self.browse().can_paginate
-    }
-
-    pub(super) fn browse_multiple_inspector_tabs(&self) -> bool {
-        self.browse().multiple_inspector_tabs
-    }
-
     pub(super) fn allows(&self, action: &Action) -> bool {
         self.policy
             .is_enabled(action.feature_requirement_for_context(self.mode, self.json_searching))
     }
-
-    pub(super) fn pending_prefix(&self) -> Option<Prefix> {
-        self.pending_prefix
-    }
-
     pub(super) fn supports_diagnostics(&self) -> bool {
         self.policy
             .is_enabled(FeatureRequirement::SqliteDiagnostics)
     }
-
     pub(super) fn supports_json_edit(&self) -> bool {
         self.policy.is_enabled(FeatureRequirement::JsonDocumentEdit)
     }
-
     pub(super) fn supports_json_detail(&self) -> bool {
         self.policy
             .is_enabled(FeatureRequirement::JsonDocumentDetail)
     }
-
-    pub(super) fn sql_confirmation(&self) -> Option<SqlConfirmation> {
-        match self.scope {
-            Scope::SqlConfirmation { kind, .. } => Some(kind),
-            _ => None,
-        }
-    }
-
-    pub(super) fn is_sql_confirmation_matched(&self) -> bool {
-        matches!(self.scope, Scope::SqlConfirmation { matched: true, .. })
-    }
-
-    pub(super) fn is_sql_completion_visible(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::SqlEditing {
-                completion_visible: true
-            }
-        )
-    }
-
-    pub(super) fn can_open_history(&self) -> bool {
-        self.history_available && !self.is_sql_completion_visible()
-    }
-
-    pub(super) fn sql_tab(&self) -> Option<SqlModalTab> {
-        match self.scope {
-            Scope::SqlNormal { tab, .. } => Some(tab),
-            _ => None,
-        }
-    }
-
-    pub(super) fn sql_has_multiple_tabs(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::SqlNormal {
-                multiple_tabs: true,
-                ..
-            }
-        )
-    }
-
-    pub(super) fn sql_compare_can_yank(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::SqlNormal {
-                compare_can_yank: true,
-                ..
-            }
-        )
-    }
-
-    pub(super) fn cancel_unmatched_sql_prefix(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::SqlNormal {
-                tab: SqlModalTab::Plan | SqlModalTab::Compare,
-                ..
-            }
-        )
-    }
-
-    pub(super) fn can_run_diagnostics(&self) -> bool {
-        matches!(self.scope, Scope::Diagnostics { can_run: true })
-    }
-
-    pub(super) fn is_cell_detail_searching(&self) -> bool {
-        matches!(self.scope, Scope::CellDetail { searching: true })
-    }
-
-    pub(super) fn is_help_editing(&self) -> bool {
-        matches!(self.scope, Scope::Help { editing: true })
-    }
-
-    pub(super) fn is_confirm_blocked(&self) -> bool {
-        matches!(self.scope, Scope::Confirm { blocked: true })
-    }
-
-    pub(super) fn is_service_selected(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::ConnectionSelector {
-                service_selected: true
-            }
-        )
-    }
-
-    pub(super) fn can_retry_connection(&self) -> bool {
-        matches!(self.scope, Scope::ConnectionError { can_retry: true })
-    }
-
-    pub(super) fn is_setup_dropdown_open(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::ConnectionSetup {
-                dropdown_open: true,
-                ..
-            }
-        )
-    }
-
-    pub(super) fn is_setup_dropdown_field(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::ConnectionSetup {
-                dropdown_field: true,
-                ..
-            }
-        )
-    }
-
-    pub(super) fn is_setup_text_focused(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::ConnectionSetup {
-                text_focused: true,
-                ..
-            }
-        )
-    }
-
-    pub(super) fn is_setup_editing(&self) -> bool {
-        matches!(self.scope, Scope::ConnectionSetup { editing: true, .. })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_connection_setup(
-        mut self,
-        field: ConnectionField,
-        dropdown_open: bool,
-    ) -> Self {
-        let dropdown_field = is_dropdown_field(field);
-        self.mode = InputMode::ConnectionSetup;
-        self.scope = Scope::ConnectionSetup {
-            dropdown_open,
-            dropdown_field,
-            text_focused: !dropdown_field,
-            editing: false,
-        };
-        self
-    }
-
-    pub(super) fn is_settings_editing(&self) -> bool {
-        matches!(self.scope, Scope::Settings { editing: true, .. })
-    }
-
-    pub(super) fn is_custom_browser_selected(&self) -> bool {
-        matches!(
-            self.scope,
-            Scope::Settings {
-                custom_selected: true,
-                ..
-            }
-        )
-    }
 }
-
 fn is_dropdown_field(field: ConnectionField) -> bool {
     matches!(
         field,

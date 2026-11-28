@@ -33,7 +33,18 @@ pub(in crate::update) fn apply_text_edit(
             edit_json_text(state, edit);
             return vec![];
         }
-        _ => {}
+        InputTarget::SqlModalHighRisk
+        | InputTarget::SqlModalAnalyzeHighRisk
+        | InputTarget::ResultCellEdit
+        | InputTarget::ConnectionSetup
+        | InputTarget::CommandLine
+        | InputTarget::Filter
+        | InputTarget::ErFilter
+        | InputTarget::SettingsErBrowser
+        | InputTarget::QueryHistoryFilter
+        | InputTarget::JsonSearch
+        | InputTarget::CellDetailSearch
+        | InputTarget::HelpFilter => {}
     }
 
     let yank_text = state.kill_buffer().map(str::to_owned);

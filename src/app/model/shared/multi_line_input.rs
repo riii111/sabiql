@@ -197,7 +197,6 @@ impl MultiLineInputState {
                 self.set_cursor_and_sync(previous);
                 self.preferred_col = None;
             }
-            CursorMove::ReadlineWordStart | CursorMove::ReadlineWordEnd => {}
             CursorMove::FirstLine => {
                 let (_, current_col) = self.current_line_col();
                 let preferred_col = self.preferred_col.unwrap_or(current_col);
@@ -213,7 +212,11 @@ impl MultiLineInputState {
                 self.set_cursor_from_line(last_row, preferred_col.min(last.len));
                 self.preferred_col = Some(preferred_col);
             }
-            CursorMove::ViewportTop | CursorMove::ViewportMiddle | CursorMove::ViewportBottom => {}
+            CursorMove::ReadlineWordStart
+            | CursorMove::ReadlineWordEnd
+            | CursorMove::ViewportTop
+            | CursorMove::ViewportMiddle
+            | CursorMove::ViewportBottom => {}
         }
     }
 
@@ -590,7 +593,6 @@ mod tests {
 
             #[rstest]
             #[case(CursorMove::LineStart)]
-            #[case(CursorMove::LineStart)]
             fn returns_current_line_start(#[case] movement: CursorMove) {
                 // "abc\ndef" → cursor at 5 (on 'e'), col=1
                 // Home → start of line 1 → cursor=4
@@ -600,7 +602,6 @@ mod tests {
             }
 
             #[rstest]
-            #[case(CursorMove::LineEnd)]
             #[case(CursorMove::LineEnd)]
             fn returns_current_line_end(#[case] movement: CursorMove) {
                 // "abc\ndef" → cursor at 4 (on 'd'), col=0
@@ -612,7 +613,6 @@ mod tests {
 
             #[rstest]
             #[case(CursorMove::LineStart)]
-            #[case(CursorMove::LineStart)]
             fn first_line_start_returns_zero(#[case] movement: CursorMove) {
                 let mut s = ml("abc\ndef", 2);
                 s.move_cursor(movement);
@@ -620,7 +620,6 @@ mod tests {
             }
 
             #[rstest]
-            #[case(CursorMove::LineEnd)]
             #[case(CursorMove::LineEnd)]
             fn first_line_end_returns_line_length(#[case] movement: CursorMove) {
                 let mut s = ml("abc\ndef", 0);
@@ -630,8 +629,6 @@ mod tests {
 
             #[rstest]
             #[case(CursorMove::LineStart, 4)]
-            #[case(CursorMove::LineStart, 4)]
-            #[case(CursorMove::LineEnd, 4)]
             #[case(CursorMove::LineEnd, 4)]
             fn empty_line_returns_same_position(
                 #[case] movement: CursorMove,
@@ -646,8 +643,6 @@ mod tests {
 
             #[rstest]
             #[case(CursorMove::LineStart, 4)]
-            #[case(CursorMove::LineStart, 4)]
-            #[case(CursorMove::LineEnd, 6)]
             #[case(CursorMove::LineEnd, 6)]
             fn multibyte_returns_line_boundaries(
                 #[case] movement: CursorMove,

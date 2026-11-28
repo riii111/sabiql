@@ -33,7 +33,8 @@ pub(super) fn confirmation_text_field(target: InputTarget) -> Vec<Row> {
 pub(super) fn consume_readline(target: InputTarget) -> Vec<Row> {
     let mut rows = readline_rows(target);
     for row in &mut rows {
-        row.references = &[];
+        row.surfaces
+            .retain(|surface| *surface != HintSurface::Editing);
         for binding in &mut row.bindings {
             *binding = binding.clone().consume();
         }
@@ -458,14 +459,18 @@ fn hidden_binding(action: Action, combos: &[KeyCombo]) -> Row {
         Action::TextYank { .. } => "Paste cut text",
         _ => unreachable!(),
     };
-    Row {
-        bindings: vec![Binding::action(action, combos)],
-        short: "",
-        description,
-        references: &[HintSurface::Editing],
-        dynamic_label: None,
-        visible: None,
-        surfaces: &[],
+    {
+        let mut row = Row {
+            bindings: vec![Binding::action(action, combos)],
+            short: "",
+            description,
+
+            dynamic_label: None,
+            visible: None,
+            surfaces: [].to_vec(),
+        };
+        row.surfaces.extend_from_slice(&[HintSurface::Editing]);
+        row
     }
 }
 

@@ -63,11 +63,12 @@ pub(super) static VIEWING: LazyLock<Vec<Row>> = LazyLock::new(|| {
             vim_jumps: false,
         },
     );
-    scrolling[0].surfaces = &[
+    scrolling[0].surfaces = [
         HintSurface::Footer,
         HintSurface::Current,
         HintSurface::Advanced,
-    ];
+    ]
+    .to_vec();
     rows.extend(scrolling);
     rows.push(Row::new(
         vec![Binding::action(
@@ -94,7 +95,7 @@ pub(super) static SEARCHING: LazyLock<Vec<Row>> = LazyLock::new(|| {
 });
 
 fn rows(context: &KeyContext) -> &'static [Row] {
-    if context.is_cell_detail_searching() {
+    if context.is_cell_detail_searching {
         &SEARCHING
     } else {
         &VIEWING

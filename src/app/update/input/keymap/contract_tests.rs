@@ -35,7 +35,7 @@ fn check_state(state: &mut AppState) {
     ];
     for (row_index, row) in rows.iter().enumerate() {
         let visible = surfaces.iter().any(|surface| {
-            (row.surfaces.contains(surface) || row.references.contains(surface))
+            row.surfaces.contains(surface)
                 && row
                     .visible
                     .is_none_or(|condition| condition(&context, *surface))

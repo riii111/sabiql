@@ -34,16 +34,17 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
             bindings: vec![Binding::no_ctrl_alt(confirm, Key::Enter)],
             short: confirm_label,
             description: "Execute the confirmed statement",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
-                surface != HintSurface::Border || context.is_sql_confirmation_matched()
+                surface != HintSurface::Border || context.is_sql_confirmation_matched
             }),
-            surfaces: &[
+            surfaces: [
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::Editing,
-            ],
+            ]
+            .to_vec(),
         },
         Row::new(
             vec![Binding::any_modifiers(cancel, Key::Esc)],
@@ -99,7 +100,7 @@ fn rows(analyze: bool, typed: bool) -> Vec<Row> {
 }
 
 pub(super) fn active_rows(context: &KeyContext) -> Option<&'static [Row]> {
-    Some(match context.sql_confirmation()? {
+    Some(match context.sql_confirmation? {
         SqlConfirmation::High => &HIGH,
         SqlConfirmation::Risk => &RISK,
         SqlConfirmation::AnalyzeHigh => &ANALYZE_HIGH,

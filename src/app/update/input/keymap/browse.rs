@@ -22,21 +22,24 @@ pub(super) static RESULT_CELL: LazyLock<Vec<Row>> = LazyLock::new(|| rows(Browse
 
 fn rows(pane: BrowsePane) -> Vec<Row> {
     let mut rows = global::ROWS.clone();
-    rows.push(Row {
-        references: &[HintSurface::Connections],
-        visible: Some(|context, surface| {
-            surface != HintSurface::FooterAction
-                || (!context.browse_focused() && context.browse_pane() != BrowsePane::ResultCell)
-        }),
-        ..row(
-            vec![
-                Binding::action(Action::ConfirmSelection, &[KeyCombo::plain(Key::Enter)])
-                    .when(KeyContext::browse_connection_error),
-            ],
-            "Error",
-            "Open connection error details",
-            &[HintSurface::Current, HintSurface::FooterAction],
-        )
+    rows.push({
+        let mut row = Row {
+            visible: Some(|context, surface| {
+                surface != HintSurface::FooterAction
+                    || (!context.browse_focused && context.browse_pane != BrowsePane::ResultCell)
+            }),
+            ..row(
+                vec![
+                    Binding::action(Action::ConfirmSelection, &[KeyCombo::plain(Key::Enter)])
+                        .when(|context| context.browse_connection_error),
+                ],
+                "Error",
+                "Open connection error details",
+                &[HintSurface::Current, HintSurface::FooterAction],
+            )
+        };
+        row.surfaces.extend_from_slice(&[HintSurface::Connections]);
+        row
     });
     let mut pane_switch = Vec::new();
     for (key, target) in [
@@ -46,21 +49,22 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
     ] {
         pane_switch.push(
             Binding::any_modifiers(Action::ToggleFocus, Key::Char(key))
-                .when(KeyContext::browse_focused),
+                .when(|context| context.browse_focused),
         );
         pane_switch.push(
             Binding::any_modifiers(Action::SetFocusedPane(target), Key::Char(key))
-                .when(|context| !context.browse_focused()),
+                .when(|context| !context.browse_focused),
         );
     }
-    rows.push(Row {
-        references: &[HintSurface::OpenSwitch],
-        ..row(
+    rows.push({
+        let mut row = row(
             pane_switch,
             "Pane",
             "Switch pane focus",
             &[HintSurface::Current],
-        )
+        );
+        row.surfaces.extend_from_slice(&[HintSurface::OpenSwitch]);
+        row
     });
     for key in ['n', 'p'] {
         rows.push(row(
@@ -94,38 +98,44 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                 "Cancel",
                 &[HintSurface::Current, HintSurface::Navigation],
             ));
-            rows.push(Row {
-                references: &[HintSurface::DataActions],
-                visible: Some(|context, surface| {
-                    surface != HintSurface::FooterAction
-                        || (!context.browse_focused()
-                            && context.browse_pane() != BrowsePane::ResultCell)
-                }),
-                ..row(
-                    vec![
-                        Binding::no_ctrl_alt(Action::DdlYank, Key::Char('y'))
-                            .when(KeyContext::browse_inspector_ddl),
-                    ],
-                    "Yank",
-                    "Copy DDL to clipboard",
-                    &[HintSurface::Current, HintSurface::FooterAction],
-                )
+            rows.push({
+                let mut row = Row {
+                    visible: Some(|context, surface| {
+                        surface != HintSurface::FooterAction
+                            || (!context.browse_focused
+                                && context.browse_pane != BrowsePane::ResultCell)
+                    }),
+                    ..row(
+                        vec![
+                            Binding::no_ctrl_alt(Action::DdlYank, Key::Char('y'))
+                                .when(|context| context.browse_inspector_ddl),
+                        ],
+                        "Yank",
+                        "Copy DDL to clipboard",
+                        &[HintSurface::Current, HintSurface::FooterAction],
+                    )
+                };
+                row.surfaces.extend_from_slice(&[HintSurface::DataActions]);
+                row
             });
-            rows.push(Row {
-                references: &[HintSurface::OpenSwitch],
-                visible: Some(|context, surface| {
-                    surface != HintSurface::FooterNavigation
-                        || context.browse_multiple_inspector_tabs()
-                }),
-                ..row(
-                    vec![
-                        Binding::any_modifiers(Action::InspectorNextTab, Key::Tab),
-                        Binding::any_modifiers(Action::InspectorPrevTab, Key::BackTab),
-                    ],
-                    "InsTabs",
-                    "Inspector prev/next tab",
-                    &[HintSurface::Current, HintSurface::FooterNavigation],
-                )
+            rows.push({
+                let mut row = Row {
+                    visible: Some(|context, surface| {
+                        surface != HintSurface::FooterNavigation
+                            || context.browse_multiple_inspector_tabs
+                    }),
+                    ..row(
+                        vec![
+                            Binding::any_modifiers(Action::InspectorNextTab, Key::Tab),
+                            Binding::any_modifiers(Action::InspectorPrevTab, Key::BackTab),
+                        ],
+                        "InsTabs",
+                        "Inspector prev/next tab",
+                        &[HintSurface::Current, HintSurface::FooterNavigation],
+                    )
+                };
+                row.surfaces.extend_from_slice(&[HintSurface::OpenSwitch]);
+                row
             });
         }
         BrowsePane::ResultScroll | BrowsePane::ResultCell => {
@@ -140,29 +150,32 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                         HintSurface::Navigation,
                     ],
                 ));
-                rows.push(Row {
-                    references: &[HintSurface::DataActions],
-                    visible: Some(|context, surface| {
-                        surface != HintSurface::FooterClose || context.browse_staged_delete()
-                    }),
-                    dynamic_label: Some(|context| {
-                        if context.browse_staged_delete() {
-                            ("Clear Del", "Clear all staged row deletions")
-                        } else {
-                            ("Back", "Cancel")
-                        }
-                    }),
-                    ..row(
-                        vec![
-                            Binding::no_ctrl_alt(Action::ClearStagedDeletes, Key::Esc)
-                                .when(KeyContext::browse_staged_delete),
-                            Binding::no_ctrl_alt(Action::Escape, Key::Esc)
-                                .when(|context| !context.browse_staged_delete()),
-                        ],
-                        "Back",
-                        "Cancel",
-                        &[HintSurface::Current, HintSurface::FooterClose],
-                    )
+                rows.push({
+                    let mut row = Row {
+                        visible: Some(|context, surface| {
+                            surface != HintSurface::FooterClose || context.browse_staged_delete
+                        }),
+                        dynamic_label: Some(|context| {
+                            if context.browse_staged_delete {
+                                ("Clear Del", "Clear all staged row deletions")
+                            } else {
+                                ("Back", "Cancel")
+                            }
+                        }),
+                        ..row(
+                            vec![
+                                Binding::no_ctrl_alt(Action::ClearStagedDeletes, Key::Esc)
+                                    .when(|context| context.browse_staged_delete),
+                                Binding::no_ctrl_alt(Action::Escape, Key::Esc)
+                                    .when(|context| !context.browse_staged_delete),
+                            ],
+                            "Back",
+                            "Cancel",
+                            &[HintSurface::Current, HintSurface::FooterClose],
+                        )
+                    };
+                    row.surfaces.extend_from_slice(&[HintSurface::DataActions]);
+                    row
                 });
                 rows.push(row(
                     vec![Binding::no_ctrl_alt(Action::None, Key::Char('y')).consume()],
@@ -171,158 +184,191 @@ fn rows(pane: BrowsePane) -> Vec<Row> {
                     &[],
                 ));
             } else {
-                rows.push(Row {
-                    references: &[HintSurface::DataActions],
-                    visible: Some(|context, surface| {
-                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
-                            || (!context.browse_staged_delete() && !context.browse_draft())
-                    }),
-                    ..row(
-                        vec![Binding::no_ctrl_alt(
-                            Action::ResultOpenCellDetail,
-                            Key::Enter,
-                        )],
-                        "Detail",
-                        "Open active cell detail",
-                        &[HintSurface::Current, HintSurface::FooterAction],
-                    )
+                rows.push({
+                    let mut row = Row {
+                        visible: Some(|context, surface| {
+                            !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                                || (!context.browse_staged_delete && !context.browse_draft)
+                        }),
+                        ..row(
+                            vec![Binding::no_ctrl_alt(
+                                Action::ResultOpenCellDetail,
+                                Key::Enter,
+                            )],
+                            "Detail",
+                            "Open active cell detail",
+                            &[HintSurface::Current, HintSurface::FooterAction],
+                        )
+                    };
+                    row.surfaces.extend_from_slice(&[HintSurface::DataActions]);
+                    row
                 });
-                rows.push(Row {
-                    references: &[HintSurface::Editing],
-                    dynamic_label: Some(|context| {
-                        if context.browse_draft() {
-                            ("Discard", "Discard pending draft")
-                        } else {
-                            ("Back", "Exit cell selection")
-                        }
-                    }),
-                    ..row(
-                        vec![
-                            Binding::no_ctrl_alt(Action::ResultDiscardCellEdit, Key::Esc)
-                                .when(KeyContext::browse_draft),
-                            Binding::no_ctrl_alt(Action::ResultExitToScroll, Key::Esc)
-                                .when(|context| !context.browse_draft()),
-                        ],
-                        "Back",
-                        "Exit cell selection or discard draft",
-                        &[HintSurface::Current, HintSurface::FooterClose],
-                    )
+                rows.push({
+                    let mut row = Row {
+                        dynamic_label: Some(|context| {
+                            if context.browse_draft {
+                                ("Discard", "Discard pending draft")
+                            } else {
+                                ("Back", "Exit cell selection")
+                            }
+                        }),
+                        ..row(
+                            vec![
+                                Binding::no_ctrl_alt(Action::ResultDiscardCellEdit, Key::Esc)
+                                    .when(|context| context.browse_draft),
+                                Binding::no_ctrl_alt(Action::ResultExitToScroll, Key::Esc)
+                                    .when(|context| !context.browse_draft),
+                            ],
+                            "Back",
+                            "Exit cell selection or discard draft",
+                            &[HintSurface::Current, HintSurface::FooterClose],
+                        )
+                    };
+                    row.surfaces.extend_from_slice(&[HintSurface::Editing]);
+                    row
                 });
-                rows.push(Row {
-                    references: &[HintSurface::Editing],
-                    visible: Some(|context, surface| {
-                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
-                            || (!context.browse_staged_delete()
-                                && (context.browse_can_edit_cell() || context.browse_draft()))
-                    }),
-                    ..row(
-                        vec![Binding::no_ctrl_alt(
-                            Action::ResultEnterCellEdit,
-                            Key::Char('i'),
-                        )],
-                        "Edit",
-                        "Edit active cell",
-                        &[HintSurface::Current, HintSurface::FooterAction],
-                    )
+                rows.push({
+                    let mut row = Row {
+                        visible: Some(|context, surface| {
+                            !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                                || (!context.browse_staged_delete
+                                    && (context.browse_can_edit_cell || context.browse_draft))
+                        }),
+                        ..row(
+                            vec![Binding::no_ctrl_alt(
+                                Action::ResultEnterCellEdit,
+                                Key::Char('i'),
+                            )],
+                            "Edit",
+                            "Edit active cell",
+                            &[HintSurface::Current, HintSurface::FooterAction],
+                        )
+                    };
+                    row.surfaces.extend_from_slice(&[HintSurface::Editing]);
+                    row
                 });
-                rows.push(Row {
-                    references: &[HintSurface::DataActions],
-                    visible: Some(|context, surface| {
-                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
-                            || (!context.browse_staged_delete() && !context.browse_draft())
-                    }),
-                    ..row(
-                        vec![
-                            Binding::repeat(Action::ResultRowYankOperatorPending, Key::Char('y'))
-                                .when(|context| !context.browse_yank_pending()),
-                            Binding::repeat(Action::ResultRowYank, Key::Char('y'))
-                                .when(KeyContext::browse_yank_pending),
-                        ],
-                        "Yank Row",
-                        "Copy the active row values to clipboard (TSV)",
-                        &[HintSurface::Current, HintSurface::FooterAction],
-                    )
+                rows.push({
+                    let mut row = Row {
+                        visible: Some(|context, surface| {
+                            !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                                || (!context.browse_staged_delete && !context.browse_draft)
+                        }),
+                        ..row(
+                            vec![
+                                Binding::repeat(
+                                    Action::ResultRowYankOperatorPending,
+                                    Key::Char('y'),
+                                )
+                                .when(|context| !context.browse_yank_pending),
+                                Binding::repeat(Action::ResultRowYank, Key::Char('y'))
+                                    .when(|context| context.browse_yank_pending),
+                            ],
+                            "Yank Row",
+                            "Copy the active row values to clipboard (TSV)",
+                            &[HintSurface::Current, HintSurface::FooterAction],
+                        )
+                    };
+                    row.surfaces.extend_from_slice(&[HintSurface::DataActions]);
+                    row
                 });
-                rows.push(Row {
-                    references: &[HintSurface::DataActions],
-                    visible: Some(|context, surface| {
-                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
-                            || (!context.browse_draft()
-                                && (context.browse_staged_delete() || context.browse_can_write()))
-                    }),
-                    ..row(
-                        vec![
-                            Binding::repeat(Action::ResultDeleteOperatorPending, Key::Char('d'))
-                                .when(|context| !context.browse_delete_pending()),
-                            Binding::repeat(Action::StageRowForDelete, Key::Char('d'))
-                                .when(KeyContext::browse_delete_pending),
-                        ],
-                        "Stage Del",
-                        "Stage the active row for deletion",
-                        &[HintSurface::Current, HintSurface::FooterAction],
-                    )
+                rows.push({
+                    let mut row = Row {
+                        visible: Some(|context, surface| {
+                            !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                                || (!context.browse_draft
+                                    && (context.browse_staged_delete || context.browse_can_write))
+                        }),
+                        ..row(
+                            vec![
+                                Binding::repeat(
+                                    Action::ResultDeleteOperatorPending,
+                                    Key::Char('d'),
+                                )
+                                .when(|context| !context.browse_delete_pending),
+                                Binding::repeat(Action::StageRowForDelete, Key::Char('d'))
+                                    .when(|context| context.browse_delete_pending),
+                            ],
+                            "Stage Del",
+                            "Stage the active row for deletion",
+                            &[HintSurface::Current, HintSurface::FooterAction],
+                        )
+                    };
+                    row.surfaces.extend_from_slice(&[HintSurface::DataActions]);
+                    row
                 });
             }
-            rows.push(Row {
-                references: &[HintSurface::DataActions],
-                visible: Some(|context, surface| {
-                    !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
-                        || !context.browse_draft()
-                }),
-                ..row(
-                    vec![
-                        Binding::action(
-                            Action::OpenModal(ModalKind::RowDetail),
-                            &[KeyCombo::plain(Key::Char('K'))],
-                        )
-                        .when(|context| {
-                            !context.browse_staged_delete() && context.browse_selected_row()
-                        }),
-                    ],
-                    "Row Detail",
-                    "Open Row Detail",
-                    &[HintSurface::Current, HintSurface::FooterAction],
-                )
-            });
-            rows.push(Row {
-                references: &[HintSurface::DataActions],
-                visible: Some(|context, surface| {
-                    !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
-                        || !context.browse_draft()
-                }),
-                ..row(
-                    vec![
-                        Binding::action(Action::ResultCellYank, &[KeyCombo::plain(Key::Char('Y'))])
+            rows.push({
+                let mut row = Row {
+                    visible: Some(|context, surface| {
+                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                            || !context.browse_draft
+                    }),
+                    ..row(
+                        vec![
+                            Binding::action(
+                                Action::OpenModal(ModalKind::RowDetail),
+                                &[KeyCombo::plain(Key::Char('K'))],
+                            )
                             .when(|context| {
-                                !context.browse_staged_delete() && context.browse_selected_cell()
+                                !context.browse_staged_delete && context.browse_selected_row
                             }),
-                    ],
-                    "Yank Cell",
-                    "Copy the active cell value to clipboard",
-                    &[HintSurface::Current, HintSurface::FooterAction],
-                )
+                        ],
+                        "Row Detail",
+                        "Open Row Detail",
+                        &[HintSurface::Current, HintSurface::FooterAction],
+                    )
+                };
+                row.surfaces.extend_from_slice(&[HintSurface::DataActions]);
+                row
             });
-            rows.push(Row {
-                references: &[HintSurface::DataActions],
-                visible: Some(|context, surface| {
-                    !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
-                        || !context.browse_draft()
-                }),
-                ..row(
-                    vec![
-                        Binding::any_modifiers(Action::UnstageLastStagedRow, Key::Char('u'))
-                            .when(KeyContext::browse_staged_delete),
-                    ],
-                    "Unstage",
-                    "Unstage the last staged row deletion",
-                    &[HintSurface::Current, HintSurface::FooterAction],
-                )
+            rows.push({
+                let mut row = Row {
+                    visible: Some(|context, surface| {
+                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                            || !context.browse_draft
+                    }),
+                    ..row(
+                        vec![
+                            Binding::action(
+                                Action::ResultCellYank,
+                                &[KeyCombo::plain(Key::Char('Y'))],
+                            )
+                            .when(|context| {
+                                !context.browse_staged_delete && context.browse_selected_cell
+                            }),
+                        ],
+                        "Yank Cell",
+                        "Copy the active cell value to clipboard",
+                        &[HintSurface::Current, HintSurface::FooterAction],
+                    )
+                };
+                row.surfaces.extend_from_slice(&[HintSurface::DataActions]);
+                row
+            });
+            rows.push({
+                let mut row = Row {
+                    visible: Some(|context, surface| {
+                        !matches!(surface, HintSurface::FooterAction | HintSurface::Current)
+                            || !context.browse_draft
+                    }),
+                    ..row(
+                        vec![
+                            Binding::any_modifiers(Action::UnstageLastStagedRow, Key::Char('u'))
+                                .when(|context| context.browse_staged_delete),
+                        ],
+                        "Unstage",
+                        "Unstage the last staged row deletion",
+                        &[HintSurface::Current, HintSurface::FooterAction],
+                    )
+                };
+                row.surfaces.extend_from_slice(&[HintSurface::DataActions]);
+                row
             });
             rows.push(Row {
                 visible: Some(|context, surface| {
                     surface != HintSurface::FooterNavigation
-                        || (context.browse_pane() == BrowsePane::ResultScroll
-                            && context.browse_can_paginate())
+                        || (context.browse_pane == BrowsePane::ResultScroll
+                            && context.browse_can_paginate)
                 }),
                 ..row(
                     vec![
@@ -562,7 +608,7 @@ fn navigation_action(pane: BrowsePane, movement: Movement) -> Option<Action> {
 }
 
 pub(super) fn active_rows(context: &KeyContext) -> &'static [Row] {
-    match context.browse_pane() {
+    match context.browse_pane {
         BrowsePane::Explorer => &EXPLORER,
         BrowsePane::Inspector => &INSPECTOR,
         BrowsePane::ResultScroll => &RESULT_SCROLL,
@@ -589,7 +635,7 @@ pub fn browse_shortcut(shortcut: BrowseShortcut, context: &KeyContext) -> Option
                     matches!(action, Action::OpenModal(ModalKind::ConnectionSelector))
                 }
                 BrowseShortcut::ErrorDetails => {
-                    matches!(action, Action::ConfirmSelection) && context.browse_connection_error()
+                    matches!(action, Action::ConfirmSelection) && context.browse_connection_error
                 }
             };
             matches.then_some(hint.key)
@@ -603,7 +649,7 @@ pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
             .into_iter()
             .partition(|(index, _)| *index < global::ROWS.len());
         let mut result: Vec<_> = pane.into_iter().map(|(_, hint)| hint).collect();
-        if context.pending_prefix().is_none() {
+        if context.pending_prefix.is_none() {
             result.extend(super::command::browse_write_hints(context));
         }
         result.extend(global.into_iter().map(|(_, hint)| hint));
@@ -625,7 +671,7 @@ pub fn browse_hints(surface: HintSurface, context: &KeyContext) -> Vec<Hint> {
             .into_iter()
             .partition(|(index, _)| *index < global::ROWS.len());
         result.extend(pane.into_iter().map(|(_, hint)| hint));
-        if group == HintSurface::FooterAction && context.pending_prefix().is_none() {
+        if group == HintSurface::FooterAction && context.pending_prefix.is_none() {
             result.extend(super::command::browse_write_hints(context));
         }
         result.extend(global.into_iter().map(|(_, hint)| hint));

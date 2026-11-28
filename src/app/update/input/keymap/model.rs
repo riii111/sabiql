@@ -3,6 +3,7 @@ use std::fmt::Write;
 use super::command::LineCommand;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
+use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, InputTarget};
 
@@ -51,10 +52,9 @@ pub(super) struct Row {
     pub bindings: Vec<Binding>,
     pub short: &'static str,
     pub description: &'static str,
-    pub references: &'static [HintSurface],
     pub dynamic_label: Option<DynamicLabel>,
     pub visible: Option<fn(&KeyContext, HintSurface) -> bool>,
-    pub surfaces: &'static [HintSurface],
+    pub surfaces: Vec<HintSurface>,
 }
 
 type DynamicLabel = fn(&KeyContext) -> (&'static str, &'static str);
@@ -70,10 +70,9 @@ impl Row {
             bindings,
             short,
             description,
-            references: &[],
             dynamic_label: None,
             visible: None,
-            surfaces,
+            surfaces: surfaces.to_vec(),
         }
     }
 }
@@ -239,8 +238,8 @@ impl Binding {
 }
 
 pub(super) fn resolve(rows: &[Row], combo: KeyCombo, context: &KeyContext) -> Option<Action> {
-    if let Some(pending) = context.pending_prefix()
-        && (context.cancel_unmatched_sql_prefix()
+    if let Some(pending) = context.pending_prefix
+        && (context.cancel_unmatched_sql_prefix
             || sequence_bindings(rows, context).next().is_some())
     {
         for (binding, trigger) in sequence_bindings(rows, context) {
@@ -350,13 +349,11 @@ pub(super) fn indexed_hints(
     rows.iter()
         .enumerate()
         .filter(|(_, row)| {
-            (row.surfaces.contains(&surface) || row.references.contains(&surface))
+            row.surfaces.contains(&surface)
                 && !(surface == HintSurface::Current
                     && [HintSurface::Common, HintSurface::Navigation]
                         .iter()
-                        .any(|section| {
-                            row.surfaces.contains(section) || row.references.contains(section)
-                        }))
+                        .any(|section| row.surfaces.contains(section)))
                 && row.visible.is_none_or(|visible| visible(context, surface))
         })
         .filter_map(|(row_index, row)| {
@@ -388,7 +385,7 @@ pub(super) fn indexed_hints(
 pub(super) fn reference_hint(
     row: &Row,
     preset: KeymapPreset,
-    policy: &crate::policy::FeaturePolicy,
+    policy: &FeaturePolicy,
 ) -> Option<Hint> {
     let mut seen = Vec::new();
     let triggers = row
@@ -486,8 +483,8 @@ fn display_hint(
 }
 
 fn winner(rows: &[Row], context: &KeyContext, trigger: Trigger) -> Option<(usize, usize)> {
-    if let Some(pending) = context.pending_prefix()
-        && (context.cancel_unmatched_sql_prefix()
+    if let Some(pending) = context.pending_prefix
+        && (context.cancel_unmatched_sql_prefix
             || sequence_bindings(rows, context).next().is_some())
         && !matches!(trigger, Trigger::Sequence { prefix, .. } if prefix == pending)
     {

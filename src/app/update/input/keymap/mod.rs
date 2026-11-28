@@ -24,6 +24,7 @@ mod sql_view;
 mod sqlite_diagnostics;
 
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::settings::KeymapPreset;
 use crate::policy::FeatureRequirement;
 use crate::ports::inbound::KeyCombo;
 use crate::update::action::{Action, InputTarget};
@@ -86,11 +87,11 @@ fn scope_rows(context: &KeyContext) -> Option<&'static [model::Row]> {
         InputMode::CellEdit => &cell_edit::ROWS,
         InputMode::TablePicker => &pickers::TABLE_ROWS,
         InputMode::CommandPalette => &pickers::PALETTE_ROWS,
-        InputMode::Settings if context.is_settings_editing() => &settings::EDITING,
+        InputMode::Settings if context.is_settings_editing => &settings::EDITING,
         InputMode::Settings => &settings::SELECTING,
-        InputMode::Help if context.is_help_editing() => &help::EDITING,
+        InputMode::Help if context.is_help_editing => &help::EDITING,
         InputMode::Help => &help::VIEWING,
-        InputMode::SqlModal if context.is_sql_editing() => &sql_edit::ROWS,
+        InputMode::SqlModal if context.is_sql_editing => &sql_edit::ROWS,
         InputMode::SqlModal => {
             sql_confirmation::active_rows(context).or_else(|| sql_view::active_rows(context))?
         }
@@ -104,7 +105,7 @@ fn scope_rows(context: &KeyContext) -> Option<&'static [model::Row]> {
         InputMode::JsonDetail if context.json_searching => &json_search::ROWS,
         InputMode::JsonDetail => &json_view::ROWS,
         InputMode::JsonEdit => &json_edit::ROWS,
-        InputMode::CellDetail if context.is_cell_detail_searching() => &cell_detail::SEARCHING,
+        InputMode::CellDetail if context.is_cell_detail_searching => &cell_detail::SEARCHING,
         InputMode::CellDetail => &cell_detail::VIEWING,
         InputMode::RowDetail => &row_detail::ROWS,
     })
@@ -159,7 +160,7 @@ pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec
     ) {
         let mut deferred = Vec::new();
         for row in rows {
-            if !row.surfaces.contains(&surface) && !row.references.contains(&surface) {
+            if !row.surfaces.contains(&surface) {
                 continue;
             }
             let Some(mut hint) = model::reference_hint(row, context.preset(), context.policy())
@@ -169,13 +170,14 @@ pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec
             if surface == HintSurface::Common && row.dynamic_label.is_some() {
                 result.push(hint.clone());
                 if hint.description == "Enable Read-Only mode" {
-                    let mut focus = result
+                    if let Some(mut focus) = result
                         .iter()
                         .find(|h: &&Hint| h.description == "Toggle Focus mode")
-                        .unwrap()
-                        .clone();
-                    focus.description = "Exit Focus mode";
-                    result.push(focus);
+                        .cloned()
+                    {
+                        focus.description = "Exit Focus mode";
+                        result.push(focus);
+                    }
                     hint.description = "Disable Read-Only mode";
                     result.push(hint);
                 }
@@ -204,7 +206,7 @@ pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec
                 deferred.push(hint);
                 continue;
             }
-            if std::ptr::eq(rows, &sql_edit::ROWS[..])
+            if std::ptr::eq(rows, &raw const sql_edit::ROWS[..])
                 && matches!(
                     hint.description,
                     "Select completion" | "Accept completion" | "Dismiss completion"
@@ -213,7 +215,7 @@ pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec
                 deferred.push(hint);
                 continue;
             }
-            if std::ptr::eq(rows, &connection_setup::CONNECT[..]) {
+            if std::ptr::eq(rows, &raw const connection_setup::CONNECT[..]) {
                 match hint.description {
                     "Confirm dropdown selection"
                     | "Dropdown navigation"
@@ -222,11 +224,8 @@ pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec
                         deferred.push(hint);
                         continue;
                     }
-                    "Save and connect"
-                        if context.preset()
-                            == crate::model::shared::settings::KeymapPreset::Ide =>
-                    {
-                        let mut closed = hint.clone();
+                    "Save and connect" if context.preset() == KeymapPreset::Ide => {
+                        let mut closed = hint;
                         closed.key = "Ctrl+S".to_string();
                         result.push(closed);
                         continue;
@@ -237,8 +236,8 @@ pub(crate) fn reference_hints(surface: HintSurface, context: &KeyContext) -> Vec
             result.push(hint);
         }
         if surface == HintSurface::Connections
-            && std::ptr::eq(rows, &connection_setup::CONNECT[..])
-            && context.preset() == crate::model::shared::settings::KeymapPreset::Ide
+            && std::ptr::eq(rows, &raw const connection_setup::CONNECT[..])
+            && context.preset() == KeymapPreset::Ide
         {
             let insert_at = deferred.len().saturating_sub(1);
             if let Some(row) = rows

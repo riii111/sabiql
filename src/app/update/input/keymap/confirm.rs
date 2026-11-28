@@ -9,7 +9,7 @@ use super::{Hint, HintSurface, KeyContext};
 
 pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
     let mut scroll = line_scroll(ScrollTarget::ConfirmDialog);
-    scroll.surfaces = &[HintSurface::Current, HintSurface::ModalBasics];
+    scroll.surfaces = [HintSurface::Current, HintSurface::ModalBasics].to_vec();
     vec![
         Row {
             bindings: vec![Binding::action(
@@ -18,16 +18,17 @@ pub(super) static ROWS: LazyLock<Vec<Row>> = LazyLock::new(|| {
             )],
             short: "Confirm",
             description: "Confirm",
-            references: &[],
+
             dynamic_label: None,
             visible: Some(|context, surface| {
-                surface != HintSurface::Border || !context.is_confirm_blocked()
+                surface != HintSurface::Border || !context.is_confirm_blocked
             }),
-            surfaces: &[
+            surfaces: [
                 HintSurface::Border,
                 HintSurface::Current,
                 HintSurface::ModalBasics,
-            ],
+            ]
+            .to_vec(),
         },
         scroll,
         Row::new(

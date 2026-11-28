@@ -111,7 +111,7 @@ fn rows(picker: Picker) -> Vec<Row> {
     }
     let mut navigation = list_navigation(target, false);
     if matches!(picker, Picker::Er) {
-        navigation.surfaces = &[HintSurface::Current, HintSurface::Advanced];
+        navigation.surfaces = [HintSurface::Current, HintSurface::Advanced].to_vec();
     }
     rows.push(navigation);
     if let Some(input) = input {

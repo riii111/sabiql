@@ -49,19 +49,23 @@ pub(super) static SELECTING: LazyLock<Vec<Row>> = LazyLock::new(|| {
                 HintSurface::ModalBasics,
             ],
         ),
-        Row {
-            bindings: vec![Binding::action(
-                Action::SettingsStartCustomBrowserEdit,
-                &[KeyCombo::plain(Key::Char('i'))],
-            )],
-            short: "Edit",
-            description: "Edit custom browser",
-            references: &[HintSurface::Editing],
-            dynamic_label: None,
-            visible: Some(|context, surface| {
-                surface != HintSurface::Border || context.is_custom_browser_selected()
-            }),
-            surfaces: &[HintSurface::Border, HintSurface::Current],
+        {
+            let mut row = Row {
+                bindings: vec![Binding::action(
+                    Action::SettingsStartCustomBrowserEdit,
+                    &[KeyCombo::plain(Key::Char('i'))],
+                )],
+                short: "Edit",
+                description: "Edit custom browser",
+
+                dynamic_label: None,
+                visible: Some(|context, surface| {
+                    surface != HintSurface::Border || context.is_custom_browser_selected
+                }),
+                surfaces: [HintSurface::Border, HintSurface::Current].to_vec(),
+            };
+            row.surfaces.extend_from_slice(&[HintSurface::Editing]);
+            row
         },
         Row::new(
             vec![
@@ -136,7 +140,7 @@ pub(super) static EDITING: LazyLock<Vec<Row>> = LazyLock::new(|| {
 });
 
 fn rows(context: &KeyContext) -> &'static [Row] {
-    if context.is_settings_editing() {
+    if context.is_settings_editing {
         &EDITING
     } else {
         &SELECTING

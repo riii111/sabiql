@@ -879,7 +879,6 @@ mod tests {
             );
 
             assert!(state.json_detail.search().is_active());
-            assert!(state.json_detail.search().is_active());
         }
 
         #[test]
@@ -904,7 +903,6 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(!state.json_detail.search().is_active());
             assert!(!state.json_detail.search().is_active());
         }
 
@@ -1171,7 +1169,6 @@ mod tests {
                 },
                 now,
             );
-            assert!(!state.json_detail.search().is_active());
             assert!(!state.json_detail.search().is_active());
 
             let effects = reduce_app(
