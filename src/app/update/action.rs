@@ -574,7 +574,7 @@ pub enum Action {
     CsvExportSucceeded {
         run_id: u64,
         path: String,
-        row_count: Option<usize>,
+        row_count: usize,
     },
     CsvExportFailed {
         run_id: u64,

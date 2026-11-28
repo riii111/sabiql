@@ -1,11 +1,8 @@
 mod classifier;
-mod export;
 mod lexer;
 mod side_effect;
 mod target;
 mod transaction;
-
-pub use export::{MySqlExportPlan, mysql_export_plan};
 
 use lexer::TokenKind;
 

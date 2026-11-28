@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use async_trait::async_trait;
 
 use crate::domain::connection::ConnectionEndpoint;
@@ -32,10 +30,4 @@ pub trait QueryExecutor: Send + Sync {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError>;
-    async fn export_to_csv(
-        &self,
-        endpoint: &ConnectionEndpoint,
-        query: &str,
-        file_name: &str,
-    ) -> Result<PathBuf, DbOperationError>;
 }

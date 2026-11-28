@@ -2,7 +2,6 @@ use crate::domain::connection::SqliteConnectionConfig;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, RefreshScope, TableKind, TableKindInfo,
@@ -11,9 +10,8 @@ use crate::domain::{
 
 use super::sqlite3::parser::{
     SqliteStatementPlan, aggregate_sqlite_command_tag, append_changes_query_for_plan,
-    command_tag_result, is_sqlite_rerunnable_export_query, last_sqlite_result_set,
-    parse_affected_rows, quoted_to_query_result, sqlite_adhoc_execution_query_for_plan,
-    sqlite_empty_result_sentinel, sqlite_export_not_rerunnable_error, sqlite_probe_marker,
+    command_tag_result, last_sqlite_result_set, parse_affected_rows, quoted_to_query_result,
+    sqlite_adhoc_execution_query_for_plan, sqlite_empty_result_sentinel, sqlite_probe_marker,
     sqlite_statement_plan, sqlite_statement_tags, statement_counts_as_select_tag,
     strip_sqlite_probes,
 };
@@ -129,24 +127,6 @@ impl SqliteAdapter {
             affected_rows,
             diagnostics: Vec::new(),
         })
-    }
-
-    pub async fn export_to_csv(
-        &self,
-        config: &SqliteConnectionConfig,
-        query: &str,
-        file_name: &str,
-    ) -> Result<std::path::PathBuf, DbOperationError> {
-        if !is_sqlite_rerunnable_export_query(query)? {
-            return Err(sqlite_export_not_rerunnable_error());
-        }
-        let database_path = config.path().to_string();
-        export_to_downloads(file_name, |path| async move {
-            self.cli
-                .export_csv(&database_path, query, &path, true)
-                .await
-        })
-        .await
     }
 }
 

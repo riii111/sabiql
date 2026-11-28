@@ -6,7 +6,7 @@ use super::explain_context::ExplainContext;
 use crate::domain::connection::{
     ConnectionEndpoint, ConnectionId, ConnectionProfile, ServiceEntry,
 };
-use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_plan};
+use crate::domain::{Column, DatabaseType, TableSummary};
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::browse::query_execution::{QueryExecution, VisibleResultKind};
@@ -35,7 +35,6 @@ use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
 use crate::model::table_detail_cache::TableDetailCache;
 use crate::model::table_prefetch::TablePrefetchState;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
-use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
 use crate::policy::write::inline_cell_edit::supports_inline_edit;
 use crate::policy::write::write_guardrails::{
@@ -384,20 +383,9 @@ impl AppState {
     }
 
     pub fn can_request_csv_export(&self) -> bool {
-        let database = self.session.active_database_type();
-        self.query.cached_csv_export(database, || {
-            let Some(result) = self.query.visible_result() else {
-                return false;
-            };
-            if result.is_error() {
-                return false;
-            }
-            match database {
-                Some(DatabaseType::SQLite) => true,
-                Some(DatabaseType::MySQL) => mysql_export_plan(&result.query).is_some(),
-                Some(DatabaseType::PostgreSQL) | None => is_rerunnable_select(&result.query),
-            }
-        })
+        self.query
+            .visible_result()
+            .is_some_and(|result| !result.is_error() && !result.columns.is_empty())
     }
 
     pub fn visible_preview_target_read_only_reason(&self) -> Option<&'static str> {
@@ -1434,8 +1422,11 @@ mod tests {
         }
 
         #[test]
-        fn csv_export_is_rechecked_after_result_or_database_changes() {
+        fn csv_export_availability_follows_visible_result() {
             let mut state = make_state();
+            state.query.clear_current_result();
+            assert!(!state.can_request_csv_export());
+
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(
@@ -1446,57 +1437,21 @@ mod tests {
                     QuerySource::Adhoc,
                 )));
             assert!(!state.can_request_csv_export());
-            state.session.activate_connection(
-                &ConnectionId::new(),
-                "sqlite",
-                &endpoint::for_engine(DatabaseType::SQLite, "sqlite:///tmp/app.db"),
-            );
-            assert!(state.can_request_csv_export());
-            state.query.clear_current_result();
-            assert!(!state.can_request_csv_export());
-            state
-                .query
-                .set_current_result(make_query_result(QuerySource::Preview));
-            assert!(state.can_request_csv_export());
-        }
 
-        #[test]
-        fn csv_export_blocked_for_mutating_result_query() {
-            let mut state = make_state();
-            let result = QueryResult::success(
-                "UPDATE users SET name = 'b' WHERE id = 1 RETURNING id".to_string(),
-                vec!["id".to_string()],
-                vec![vec!["1".to_string()]],
+            state.query.set_current_result(Arc::new(QueryResult::error(
+                "SELECT 1".to_string(),
+                "error".to_string(),
                 10,
                 QuerySource::Adhoc,
-            );
-            state.query.set_current_result(Arc::new(result));
-
+            )));
             assert!(!state.can_request_csv_export());
-        }
 
-        #[rstest]
-        #[case("SELECT id FROM users")]
-        #[case("TABLE users")]
-        #[case("SHOW TABLES")]
-        #[case("DESCRIBE users")]
-        fn mysql_csv_export_allows_supported_result_queries(#[case] query: &str) {
-            let mut state = make_state();
-            state.session.activate_connection(
-                &ConnectionId::new(),
-                "mysql",
-                &endpoint::mysql("mysql://localhost/test", None),
-            );
+            state.query.clear_current_result();
+            assert!(!state.can_request_csv_export());
+
             state
                 .query
-                .set_current_result(Arc::new(QueryResult::success(
-                    query.to_string(),
-                    vec!["column".to_string()],
-                    vec![vec!["value".to_string()]],
-                    10,
-                    QuerySource::Adhoc,
-                )));
-
+                .set_current_result(make_query_result(QuerySource::Adhoc));
             assert!(state.can_request_csv_export());
         }
 

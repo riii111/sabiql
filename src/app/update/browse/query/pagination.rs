@@ -1,14 +1,11 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::connection::ConnectionEndpoint;
-use crate::domain::{DatabaseType, QuerySource, QueryValue, mysql_sql::mysql_export_plan};
+use crate::domain::QuerySource;
 use crate::model::app_state::AppState;
-use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
+use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
-use crate::policy::sql::sqlite_export::{SqliteExportPlan, sqlite_export_plan};
 use crate::ports::outbound::DbOperationError;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
@@ -34,27 +31,33 @@ fn csv_export_file_name(state: &AppState, source: QuerySource) -> String {
     }
 }
 
-fn dispatch_cached_csv_export(
-    state: &mut AppState,
-    endpoint: Arc<ConnectionEndpoint>,
-    run_id: u64,
-    file_name: String,
-    columns: Vec<String>,
-    values: Vec<Vec<QueryValue>>,
-    row_count: usize,
-) -> Vec<Effect> {
-    let needs_confirm = row_count > LARGE_EXPORT_THRESHOLD;
-    if needs_confirm {
-        let msg = format!("Export {row_count} rows to CSV? This may take a while.");
+pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    if !state.can_request_csv_export() {
+        return vec![];
+    }
+    let Some(result) = state.query.current_result().cloned() else {
+        return vec![];
+    };
+    let Some(endpoint) = state.session.endpoint().cloned() else {
+        return vec![];
+    };
+
+    let file_name = csv_export_file_name(state, result.source);
+    let row_count = result.data_row_count();
+    let run_id = state.query.begin_non_preview_running(now);
+
+    if row_count > LARGE_EXPORT_THRESHOLD {
         state.confirm_dialog.open(
             "Confirm CSV Export",
-            msg,
+            format!("Export {row_count} rows to CSV? This may take a while."),
             ConfirmIntent::CsvExportCached {
                 endpoint,
                 run_id,
                 file_name,
-                row_count: Some(row_count),
-                snapshot: CsvExportCacheSnapshot { columns, values },
+                result,
             },
         );
         state.modal.push_mode(InputMode::ConfirmDialog);
@@ -63,94 +66,8 @@ fn dispatch_cached_csv_export(
         vec![Effect::ExportCsvFromCache {
             run_id,
             file_name,
-            columns,
-            values,
-            row_count: Some(row_count),
+            result,
         }]
-    }
-}
-
-fn dispatch_rerunnable_csv_export(
-    state: &mut AppState,
-    endpoint: Arc<ConnectionEndpoint>,
-    run_id: u64,
-    export_query: String,
-    file_name: String,
-) -> Vec<Effect> {
-    state.confirm_dialog.open(
-        "Confirm CSV Export",
-        "Row count unknown. Export to CSV?",
-        ConfirmIntent::CsvExportRerunnable {
-            endpoint,
-            run_id,
-            export_query,
-            file_name,
-        },
-    );
-    state.modal.push_mode(InputMode::ConfirmDialog);
-    vec![]
-}
-
-pub(in crate::update) fn request_csv_export(state: &mut AppState, now: Instant) -> Vec<Effect> {
-    if reject_pending_mysql_connection_probe(state) {
-        return vec![];
-    }
-    if !state.can_request_csv_export() {
-        return vec![];
-    }
-    let Some(result) = state.query.visible_result() else {
-        return vec![];
-    };
-    let Some(endpoint) = state.session.endpoint().cloned() else {
-        return vec![];
-    };
-
-    let file_name = csv_export_file_name(state, result.source);
-    let row_count = result.row_count();
-
-    match state.session.active_database_type() {
-        Some(DatabaseType::SQLite) => {
-            match sqlite_export_plan(result.source, &result.query, &result.columns, row_count) {
-                SqliteExportPlan::NotExportable { reason } => {
-                    state.messages.set_error(reason);
-                    vec![]
-                }
-                SqliteExportPlan::RerunnableQuery { query } => {
-                    let run_id = state.query.begin_non_preview_running(now);
-                    dispatch_rerunnable_csv_export(state, endpoint, run_id, query, file_name)
-                }
-                SqliteExportPlan::CachedResult { row_count } => {
-                    let columns = result.columns.clone();
-                    let values = result.values().to_vec();
-                    let run_id = state.query.begin_non_preview_running(now);
-                    dispatch_cached_csv_export(
-                        state, endpoint, run_id, file_name, columns, values, row_count,
-                    )
-                }
-            }
-        }
-        Some(DatabaseType::MySQL) => {
-            if result.source == QuerySource::Preview {
-                let columns = result.columns.clone();
-                let values = result.values().to_vec();
-                let run_id = state.query.begin_non_preview_running(now);
-                return dispatch_cached_csv_export(
-                    state, endpoint, run_id, file_name, columns, values, row_count,
-                );
-            }
-
-            if mysql_export_plan(&result.query).is_none() {
-                return vec![];
-            }
-            let export_query = result.query.clone();
-            let run_id = state.query.begin_non_preview_running(now);
-            dispatch_rerunnable_csv_export(state, endpoint, run_id, export_query, file_name)
-        }
-        Some(DatabaseType::PostgreSQL) | None => {
-            let export_query = result.query.clone();
-            let run_id = state.query.begin_non_preview_running(now);
-            dispatch_rerunnable_csv_export(state, endpoint, run_id, export_query, file_name)
-        }
     }
 }
 
@@ -158,7 +75,7 @@ pub(in crate::update) fn csv_export_succeeded(
     state: &mut AppState,
     run_id: u64,
     path: String,
-    row_count: Option<usize>,
+    row_count: usize,
     now: Instant,
 ) -> Vec<Effect> {
     if !state.query.is_current_run(run_id) {
@@ -166,11 +83,9 @@ pub(in crate::update) fn csv_export_succeeded(
     }
 
     state.query.mark_idle();
-    let msg = match row_count {
-        Some(n) => format!("Exported {n} rows → {path}"),
-        None => format!("Exported → {path}"),
-    };
-    state.messages.set_success_at(msg, now);
+    state
+        .messages
+        .set_success_at(format!("Exported {row_count} rows → {path}"), now);
     let folder = Path::new(&path)
         .parent()
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
@@ -248,7 +163,7 @@ mod tests {
     use crate::update::browse::query::tests::*;
     use crate::update::reducer::{reduce, route};
 
-    fn csv_succeeded_action(state: &mut AppState, path: &str, row_count: Option<usize>) -> Action {
+    fn csv_succeeded_action(state: &mut AppState, path: &str, row_count: usize) -> Action {
         let run_id = begin_query_run(state);
         Action::CsvExportSucceeded {
             run_id,
@@ -521,11 +436,56 @@ mod tests {
 
     mod csv_export {
         use super::*;
-        use crate::domain::QueryResult;
+        use crate::domain::QueryValue;
         use rstest::rstest;
 
+        fn activate_postgres(state: &mut AppState) {
+            test_fixtures::activate_postgres_connection(state, "postgres://localhost/test");
+        }
+
+        fn activate_sqlite(state: &mut AppState) {
+            test_fixtures::activate_sqlite_connection(state, "sqlite:///tmp/test.db");
+        }
+
+        fn activate_mysql(state: &mut AppState) {
+            test_fixtures::activate_mysql_connection(state, "mysql://localhost/test");
+        }
+
+        fn request_csv_export(state: &mut AppState) -> Vec<Effect> {
+            route(
+                state,
+                Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+        }
+
+        fn typed_result(source: QuerySource, values: Vec<Vec<QueryValue>>) -> Arc<QueryResult> {
+            Arc::new(QueryResult::success_with_values(
+                "SELECT payload, text_value, nullable FROM users".to_string(),
+                vec![
+                    "payload".to_string(),
+                    "text_value".to_string(),
+                    "nullable".to_string(),
+                ],
+                values,
+                1,
+                source,
+            ))
+        }
+
+        fn rows_of_null(row_count: usize) -> Arc<QueryResult> {
+            Arc::new(QueryResult::success_with_values(
+                "SELECT id FROM users".to_string(),
+                vec!["id".to_string()],
+                vec![vec![QueryValue::Null]; row_count],
+                1,
+                QuerySource::Adhoc,
+            ))
+        }
+
         #[test]
-        fn delete_success_then_csv_export_confirmation_then_preview_completion_clears_selection() {
+        fn delete_success_then_csv_export_then_preview_completion_clears_selection() {
             let mut state = test_fixtures::state_after_delete_success();
             state.query.set_current_result(preview_result(10));
             state.query.pagination.reset_for_table("public", "users");
@@ -538,9 +498,10 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.message().contains("unknown"));
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExportCsvFromCache { .. }]
+            ));
             assert_eq!(
                 state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
@@ -550,38 +511,75 @@ mod tests {
             assert!(state.result_interaction.selection().cell().is_none());
         }
 
-        #[test]
-        fn request_with_adhoc_result_uses_original_query() {
-            let mut state = create_test_state();
-            state.query.set_current_result(adhoc_result());
+        #[rstest]
+        #[case::postgres(activate_postgres as fn(&mut AppState))]
+        #[case::sqlite(activate_sqlite as fn(&mut AppState))]
+        #[case::mysql(activate_mysql as fn(&mut AppState))]
+        fn adhoc_result_is_exported_as_displayed_without_confirmation(
+            #[case] activate: fn(&mut AppState),
+        ) {
+            let mut state = AppState::new("test_project".to_string());
+            activate(&mut state);
+            let values = vec![
+                vec![
+                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1]),
+                    QueryValue::text("0x00FFA1"),
+                    QueryValue::Null,
+                ],
+                vec![
+                    QueryValue::text("a\0bc"),
+                    QueryValue::text(" trailing "),
+                    QueryValue::text("2"),
+                ],
+            ];
+            let displayed = typed_result(QuerySource::Adhoc, values.clone());
+            state.query.set_current_result(Arc::clone(&displayed));
 
-            let effects = route(
-                &mut state,
-                Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = request_csv_export(&mut state);
 
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.message().contains("unknown"));
-            let Some(ConfirmIntent::CsvExportRerunnable {
-                export_query,
-                file_name,
-                ..
-            }) = state.confirm_dialog.intent()
+            let [
+                Effect::ExportCsvFromCache {
+                    file_name, result, ..
+                },
+            ] = effects.as_slice()
             else {
-                panic!("expected rerunnable CSV export confirmation");
+                panic!("expected one CSV export effect, got {effects:?}");
             };
-            assert_eq!(export_query, "SELECT 1");
             assert_eq!(file_name, "adhoc");
+            assert!(Arc::ptr_eq(result, &displayed));
+            assert_eq!(result.values(), values.as_slice());
+            assert_ne!(state.input_mode(), InputMode::ConfirmDialog);
+            assert!(state.query.is_running());
+        }
+
+        #[test]
+        fn preview_page_is_exported_with_table_derived_file_name() {
+            let mut state = create_test_state();
+            state
+                .query
+                .pagination
+                .reset_for_table("public", "user logs");
+            state.query.set_current_result(preview_result(3));
+
+            let effects = request_csv_export(&mut state);
+
+            let [
+                Effect::ExportCsvFromCache {
+                    file_name, result, ..
+                },
+            ] = effects.as_slice()
+            else {
+                panic!("expected one CSV export effect, got {effects:?}");
+            };
+            assert_eq!(file_name, "user_logs");
+            assert_eq!(result.data_row_count(), 3);
         }
 
         #[rstest]
         #[case::insert("INSERT INTO users(name) VALUES ('a') RETURNING id")]
         #[case::update("UPDATE users SET name = 'b' WHERE id = 1 RETURNING id")]
         #[case::delete("DELETE FROM users WHERE id = 1 RETURNING id")]
-        fn request_with_mutating_returning_result_is_noop(#[case] query: &str) {
+        fn tabular_result_of_executed_dml_is_exported(#[case] query: &str) {
             let mut state = create_test_state();
             state
                 .query
@@ -593,15 +591,62 @@ mod tests {
                     QuerySource::Adhoc,
                 )));
 
-            let effects = route(
-                &mut state,
-                Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = request_csv_export(&mut state);
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExportCsvFromCache { .. }]
+            ));
+        }
+
+        #[rstest]
+        #[case::postgres(activate_postgres as fn(&mut AppState))]
+        #[case::sqlite(activate_sqlite as fn(&mut AppState))]
+        #[case::mysql(activate_mysql as fn(&mut AppState))]
+        fn zero_row_result_exports_header_only(#[case] activate: fn(&mut AppState)) {
+            let mut state = AppState::new("test_project".to_string());
+            activate(&mut state);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT id, name FROM users WHERE false".to_string(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![],
+                    1,
+                    QuerySource::Adhoc,
+                )));
+
+            let effects = request_csv_export(&mut state);
+
+            let [Effect::ExportCsvFromCache { result, .. }] = effects.as_slice() else {
+                panic!("expected one CSV export effect, got {effects:?}");
+            };
+            assert_eq!(result.columns, ["id", "name"]);
+            assert!(result.values().is_empty());
+        }
+
+        #[rstest]
+        #[case::postgres(activate_postgres as fn(&mut AppState))]
+        #[case::sqlite(activate_sqlite as fn(&mut AppState))]
+        #[case::mysql(activate_mysql as fn(&mut AppState))]
+        fn result_without_columns_is_not_exported(#[case] activate: fn(&mut AppState)) {
+            let mut state = AppState::new("test_project".to_string());
+            activate(&mut state);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "UPDATE users SET name = 'b'".to_string(),
+                    vec![],
+                    vec![],
+                    1,
+                    QuerySource::Adhoc,
+                )));
+
+            let effects = request_csv_export(&mut state);
 
             assert!(effects.is_empty());
             assert!(!state.query.is_running());
+            assert_ne!(state.input_mode(), InputMode::ConfirmDialog);
         }
 
         #[test]
@@ -609,82 +654,74 @@ mod tests {
             let mut state = create_test_state();
             state.query.clear_current_result();
 
-            let effects = route(
-                &mut state,
-                Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = request_csv_export(&mut state);
 
             assert!(effects.is_empty());
+            assert!(!state.query.is_running());
         }
 
         #[test]
-        fn rerunnable_export_always_confirms_even_when_result_is_small() {
+        fn request_with_error_result_is_noop() {
             let mut state = create_test_state();
-            state.query.set_current_result(adhoc_result());
-
-            let effects = route(
-                &mut state,
-                Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.message().contains("unknown"));
-        }
-
-        #[test]
-        fn rerunnable_export_always_confirms_even_when_result_is_large() {
-            let mut state = create_test_state();
-            let result = QueryResult::success(
+            state.query.set_current_result(Arc::new(QueryResult::error(
                 "SELECT 1".to_string(),
-                vec!["value".to_string()],
-                vec![vec!["1".to_string()]],
-                0,
+                "error".to_string(),
+                10,
                 QuerySource::Adhoc,
-            )
-            .with_row_count(200_000);
-            state.query.set_current_result(Arc::new(result));
+            )));
 
-            let effects = route(
-                &mut state,
-                Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let effects = request_csv_export(&mut state);
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
+        }
+
+        #[test]
+        fn row_count_at_threshold_exports_without_confirmation() {
+            let mut state = create_test_state();
+            state
+                .query
+                .set_current_result(rows_of_null(LARGE_EXPORT_THRESHOLD));
+
+            let effects = request_csv_export(&mut state);
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExportCsvFromCache { .. }]
+            ));
+            assert_ne!(state.input_mode(), InputMode::ConfirmDialog);
+        }
+
+        #[test]
+        fn row_count_above_threshold_confirms_with_exact_count_and_keeps_displayed_result() {
+            let mut state = create_test_state();
+            let displayed = rows_of_null(LARGE_EXPORT_THRESHOLD + 1);
+            state.query.set_current_result(Arc::clone(&displayed));
+
+            let effects = request_csv_export(&mut state);
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.message().contains("unknown"));
+            assert!(state.confirm_dialog.message().contains("100001"));
+            let Some(ConfirmIntent::CsvExportCached { result, .. }) = state.confirm_dialog.intent()
+            else {
+                panic!("expected CSV export confirmation");
+            };
+            assert!(Arc::ptr_eq(result, &displayed));
         }
 
         #[test]
         fn export_succeeded_sets_success_message() {
             let mut state = create_test_state();
-            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", Some(42));
+            let action = csv_succeeded_action(&mut state, "/tmp/export.csv", 42);
 
             let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
-            assert!(
-                state
-                    .messages
-                    .last_success
-                    .as_deref()
-                    .unwrap()
-                    .contains("42")
-            );
-            assert!(
-                state
-                    .messages
-                    .last_success
-                    .as_deref()
-                    .unwrap()
-                    .contains("/tmp/export.csv")
+            assert_eq!(
+                state.messages.last_success.as_deref(),
+                Some("Exported 42 rows → /tmp/export.csv")
             );
         }
 
@@ -702,7 +739,7 @@ mod tests {
                 Action::CsvExportSucceeded {
                     run_id: stale_run_id,
                     path: "/tmp/stale-export.csv".to_string(),
-                    row_count: Some(1),
+                    row_count: 1,
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -754,231 +791,6 @@ mod tests {
             assert!(effects.is_empty());
             assert!(state.query.is_running());
             assert!(state.messages.last_error.is_none());
-        }
-
-        #[test]
-        fn request_with_error_result_is_noop() {
-            let mut state = create_test_state();
-            state.query.set_current_result(Arc::new(QueryResult::error(
-                "SELECT 1".to_string(),
-                "error".to_string(),
-                10,
-                QuerySource::Adhoc,
-            )));
-
-            let effects = route(
-                &mut state,
-                Action::RequestCsvExport,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(effects.is_empty());
-        }
-
-        mod sqlite {
-            use super::*;
-
-            fn sqlite_state() -> AppState {
-                let mut state = AppState::new("test_project".to_string());
-                test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
-                state
-            }
-
-            #[test]
-            fn write_only_query_shows_not_exportable_error() {
-                let mut state = sqlite_state();
-                state
-                    .query
-                    .set_current_result(Arc::new(QueryResult::success(
-                        "INSERT INTO users(id) VALUES (1)".to_string(),
-                        vec![],
-                        vec![],
-                        1,
-                        QuerySource::Adhoc,
-                    )));
-
-                let effects = route(
-                    &mut state,
-                    Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                assert!(effects.is_empty());
-                assert!(
-                    state
-                        .messages
-                        .last_error
-                        .as_deref()
-                        .unwrap()
-                        .contains("Cannot export")
-                );
-            }
-
-            #[test]
-            fn mixed_query_exports_cached_rows_without_count_effect() {
-                let mut state = sqlite_state();
-                state
-                    .query
-                    .set_current_result(Arc::new(QueryResult::success(
-                        "INSERT INTO users(id) VALUES (1); SELECT id FROM users".to_string(),
-                        vec!["id".to_string()],
-                        vec![vec!["1".to_string()]],
-                        1,
-                        QuerySource::Adhoc,
-                    )));
-
-                let effects = route(
-                    &mut state,
-                    Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                assert_eq!(effects.len(), 1);
-                assert!(matches!(&effects[0], Effect::ExportCsvFromCache { .. }));
-            }
-
-            #[test]
-            fn select_always_asks_for_unknown_row_count() {
-                let mut state = sqlite_state();
-                state
-                    .query
-                    .set_current_result(Arc::new(QueryResult::success(
-                        "SELECT id FROM users".to_string(),
-                        vec!["id".to_string()],
-                        vec![vec!["1".to_string()]],
-                        1,
-                        QuerySource::Adhoc,
-                    )));
-
-                let effects = route(
-                    &mut state,
-                    Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                assert!(effects.is_empty());
-                assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-                assert!(state.confirm_dialog.message().contains("unknown"));
-            }
-
-            #[test]
-            fn preview_exports_visible_typed_values_from_cache() {
-                let mut state = sqlite_state();
-                state.query.set_current_result(Arc::new(
-                    QueryResult::success_with_values(
-                        "SELECT CASE WHEN typeof(\"message\") = 'text' THEN hex(\"message\") END AS \"message\" FROM \"logs\"".to_string(),
-                        vec!["message".to_string()],
-                        vec![vec![QueryValue::text("a\0bc")]],
-                        1,
-                        QuerySource::Preview,
-                    ),
-                ));
-
-                let effects = route(
-                    &mut state,
-                    Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                let Effect::ExportCsvFromCache {
-                    columns, values, ..
-                } = &effects[0]
-                else {
-                    panic!("expected cached CSV export effect");
-                };
-                assert_eq!(columns, &["message"]);
-                assert_eq!(values, &vec![vec![QueryValue::text("a\0bc")]]);
-            }
-        }
-
-        mod mysql {
-            use super::*;
-
-            fn mysql_state(query: &str) -> AppState {
-                let mut state = AppState::new("test_project".to_string());
-                test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
-                state
-                    .query
-                    .set_current_result(Arc::new(QueryResult::success(
-                        query.to_string(),
-                        vec!["column".to_string()],
-                        vec![vec!["value".to_string()]],
-                        1,
-                        QuerySource::Adhoc,
-                    )));
-                state
-            }
-
-            #[rstest]
-            #[case::select("SELECT 1")]
-            #[case::table("TABLE users")]
-            #[case::show("SHOW TABLES")]
-            #[case::describe("DESCRIBE users")]
-            fn supported_rerunnable_queries_ask_for_unknown_row_count(#[case] query: &str) {
-                let mut state = mysql_state(query);
-
-                let effects = route(
-                    &mut state,
-                    Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                assert!(effects.is_empty());
-                assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-                assert!(state.confirm_dialog.message().contains("unknown"));
-            }
-
-            #[test]
-            fn preview_exports_visible_typed_values_from_cache() {
-                let mut state = AppState::new("test_project".to_string());
-                test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
-                let values = vec![vec![
-                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1]),
-                    QueryValue::text("0x00FFA1"),
-                    QueryValue::Null,
-                    QueryValue::text("text"),
-                ]];
-                state
-                    .query
-                    .set_current_result(Arc::new(QueryResult::success_with_values(
-                        "SELECT payload, text_value, nullable, text FROM users".to_string(),
-                        vec![
-                            "payload".to_string(),
-                            "text_value".to_string(),
-                            "nullable".to_string(),
-                            "text".to_string(),
-                        ],
-                        values.clone(),
-                        1,
-                        QuerySource::Preview,
-                    )));
-
-                let effects = route(
-                    &mut state,
-                    Action::RequestCsvExport,
-                    Instant::now(),
-                    &AppServices::stub(),
-                );
-
-                let Effect::ExportCsvFromCache {
-                    columns,
-                    values: cached_values,
-                    row_count,
-                    ..
-                } = &effects[0]
-                else {
-                    panic!("expected cached CSV export effect");
-                };
-                assert_eq!(columns, &["payload", "text_value", "nullable", "text"]);
-                assert_eq!(cached_values, &values);
-                assert_eq!(*row_count, Some(1));
-            }
         }
     }
 }

@@ -13,8 +13,8 @@ use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::connection::{ConnectionEndpoint, ServiceEntry};
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::domain::{
-    DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, QueryValue,
-    SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
+    DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, SqlitePathError,
+    classify_sqlite_metadata_error, classify_sqlite_read_error,
 };
 use crate::model::app_state::AppState;
 use crate::model::browse::session::ConnectionSaveGuard;
@@ -97,12 +97,11 @@ impl CachedResultExporter for TestCachedResultExporter {
     async fn export_cached_result_to_csv(
         &self,
         file_name: String,
-        _columns: Vec<String>,
-        values: Vec<Vec<QueryValue>>,
+        result: Arc<QueryResult>,
     ) -> Result<PathBuf, DbOperationError> {
         Ok(PathBuf::from(format!(
             "/tmp/{file_name}_{}.csv",
-            values.len()
+            result.data_row_count()
         )))
     }
 }

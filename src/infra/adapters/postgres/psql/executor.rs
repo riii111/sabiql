@@ -1,79 +1,17 @@
-use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::adapters::csv_export::CsvOutputError;
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{CommandTag, QueryResult, QuerySource, RefreshScope, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 use super::error::{classify_cli_spawn_error, classify_query_error};
 use super::parser::{ParseCommandTagError, split_sql_statements};
-
-async fn collect_csv_output(
-    mut child: tokio::process::Child,
-    path: &Path,
-    timeout_duration: Duration,
-) -> Result<(), DbOperationError> {
-    let mut stdout = child.stdout.take().expect("piped psql stdout");
-    let mut stderr_handle = child.stderr.take().expect("piped psql stderr");
-
-    let file = tokio::fs::File::create(path)
-        .await
-        .map_err(|e| DbOperationError::ExportIo(Arc::new(e)))?;
-    let mut writer = tokio::io::BufWriter::new(file);
-
-    let result = timeout(timeout_duration, async {
-        let ((), stderr, status) = tokio::try_join!(
-            async {
-                let mut buf = [0u8; 8192];
-                loop {
-                    let n = stdout.read(&mut buf).await?;
-                    if n == 0 {
-                        break;
-                    }
-                    writer
-                        .write_all(&buf[..n])
-                        .await
-                        .map_err(CsvOutputError::File)?;
-                }
-                writer.flush().await.map_err(CsvOutputError::File)?;
-                Ok::<_, CsvOutputError>(())
-            },
-            async {
-                let mut buf = Vec::new();
-                stderr_handle.read_to_end(&mut buf).await?;
-                Ok::<_, CsvOutputError>(String::from_utf8_lossy(&buf).into_owned())
-            },
-            async { Ok::<_, CsvOutputError>(child.wait().await?) },
-        )?;
-
-        Ok::<_, CsvOutputError>((status, stderr))
-    })
-    .await;
-
-    drop(writer);
-    match result {
-        Ok(Ok((status, _))) if status.success() => Ok(()),
-        Ok(Ok((status, stderr))) => {
-            let _ = tokio::fs::remove_file(path).await;
-            Err(classify_query_error(&stderr, status))
-        }
-        Ok(Err(e)) => {
-            let _ = tokio::fs::remove_file(path).await;
-            Err(e.into_db_operation_error())
-        }
-        Err(e) => {
-            let _ = tokio::fs::remove_file(path).await;
-            Err(DbOperationError::Timeout(e.to_string()))
-        }
-    }
-}
 
 // Keep user SQL server-side: stdin scripts would let psql interpret
 // line-leading backslash metacommands before the server sees them.
@@ -282,6 +220,15 @@ impl PostgresAdapter {
 
         let elapsed = start.elapsed().as_millis() as u64;
 
+        Self::single_statement_result(query, &output, elapsed, source)
+    }
+
+    fn single_statement_result(
+        query: &str,
+        output: &str,
+        elapsed: u64,
+        source: QuerySource,
+    ) -> Result<QueryResult, DbOperationError> {
         let stdout_trimmed = output.trim();
         if stdout_trimmed.is_empty() {
             return Ok(QueryResult::success(
@@ -297,7 +244,8 @@ impl PostgresAdapter {
             return Ok(Self::command_tag_result(query, tag, elapsed, source));
         }
 
-        Self::csv_result(query, stdout_trimmed, elapsed, source)
+        // Trimming the whole CSV would drop trailing whitespace of the last unquoted field.
+        Self::csv_result(query, output, elapsed, source)
     }
 
     async fn execute_segmented_statements(
@@ -411,27 +359,6 @@ impl PostgresAdapter {
             affected_rows,
             diagnostics: Vec::new(),
         })
-    }
-
-    pub(in crate::adapters::postgres) async fn export_csv_to_file(
-        &self,
-        dsn: &str,
-        query: &str,
-        path: &std::path::Path,
-        read_only: bool,
-    ) -> Result<(), DbOperationError> {
-        let mut cmd = Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only);
-
-        let child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(classify_cli_spawn_error)?;
-
-        collect_csv_output(child, path, Duration::from_secs(self.timeout_secs * 10)).await?;
-
-        Ok(())
     }
 
     pub(in crate::adapters::postgres) async fn fetch_preview_order_columns(
@@ -663,6 +590,19 @@ mod tests {
         }
 
         #[test]
+        fn single_statement_keeps_trailing_whitespace_of_last_field() {
+            let result = super::super::PostgresAdapter::single_statement_result(
+                "SELECT id, note FROM notes",
+                "id,note\n1,first\n2,last  \n",
+                3,
+                QuerySource::Adhoc,
+            )
+            .unwrap();
+
+            assert_eq!(result.display_value_ref_at(1, 1).as_deref(), Some("last  "));
+        }
+
+        #[test]
         fn standard_csv_returns_columns_and_text_rows() {
             let result = super::super::PostgresAdapter::csv_result(
                 "SELECT id, name FROM users",
@@ -720,87 +660,6 @@ mod tests {
             .unwrap_err();
 
             assert!(matches!(error, DbOperationError::CsvParse(_)));
-        }
-    }
-
-    #[cfg(unix)]
-    mod csv_export {
-        use std::process::Stdio;
-
-        use tempfile::tempdir;
-        use tokio::process::Command;
-
-        use crate::app::ports::outbound::DbOperationError;
-
-        use super::super::collect_csv_output;
-
-        #[tokio::test]
-        async fn reads_stderr_without_blocking_stdout() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("export.csv");
-            let child = Command::new("sh")
-                .arg("-c")
-                .arg(
-                    "i=0; while [ \"$i\" -lt 20000 ]; do printf 'NOTICE: diagnostic\\n' >&2; i=$((i + 1)); done; printf 'id,name\\n1,Alice\\n'",
-                )
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .kill_on_drop(true)
-                .spawn()
-                .unwrap();
-
-            collect_csv_output(child, &path, std::time::Duration::from_secs(2))
-                .await
-                .unwrap();
-
-            assert_eq!(
-                tokio::fs::read_to_string(path).await.unwrap(),
-                "id,name\n1,Alice\n"
-            );
-        }
-
-        #[tokio::test]
-        async fn nonzero_exit_removes_partial_file_and_returns_classified_error() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("export.csv");
-            let child = Command::new("sh")
-                .arg("-c")
-                .arg(
-                    "printf 'id,name\\n1,Alice\\n'; printf 'ERROR:  42501: permission denied\\n' >&2; exit 1",
-                )
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .kill_on_drop(true)
-                .spawn()
-                .unwrap();
-
-            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
-
-            assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
-            assert!(!path.exists());
-        }
-
-        #[tokio::test]
-        async fn nonzero_exit_without_stderr_reports_status_and_removes_file() {
-            let dir = tempdir().unwrap();
-            let path = dir.path().join("export.csv");
-            let child = Command::new("sh")
-                .arg("-c")
-                .arg("exit 7")
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .kill_on_drop(true)
-                .spawn()
-                .unwrap();
-
-            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
-
-            assert!(matches!(
-                result,
-                Err(DbOperationError::QueryFailed(details))
-                    if details == "psql exited with status code 7"
-            ));
-            assert!(!path.exists());
         }
     }
 
