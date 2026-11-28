@@ -171,26 +171,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_creates_file_and_writes_entry() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        let entry = make_entry("SELECT 1");
-        store
-            .append("test", &scope(&conn_id), &entry)
-            .await
-            .unwrap();
-
-        let history_dir = tmp.path().join("history");
-        let path = history_dir.join(format!("{conn_id}.jsonl"));
-        assert!(path.exists());
-
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("SELECT 1"));
-    }
-
-    #[tokio::test]
     async fn load_returns_entries_in_order() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());

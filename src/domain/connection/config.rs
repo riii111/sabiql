@@ -412,23 +412,20 @@ mod tests {
     #[test]
     fn mysql_tls_modes_use_mysql_option_names() {
         let expected = [
-            (MySqlSslMode::Disabled, "\"DISABLED\""),
-            (MySqlSslMode::Preferred, "\"PREFERRED\""),
-            (MySqlSslMode::Required, "\"REQUIRED\""),
-            (MySqlSslMode::VerifyCa, "\"VERIFY_CA\""),
-            (MySqlSslMode::VerifyIdentity, "\"VERIFY_IDENTITY\""),
+            (MySqlSslMode::Disabled, "DISABLED"),
+            (MySqlSslMode::Preferred, "PREFERRED"),
+            (MySqlSslMode::Required, "REQUIRED"),
+            (MySqlSslMode::VerifyCa, "VERIFY_CA"),
+            (MySqlSslMode::VerifyIdentity, "VERIFY_IDENTITY"),
         ];
 
-        for (mode, serialized) in expected {
-            assert_eq!(serde_json::to_string(&mode).unwrap(), serialized);
-        }
-    }
+        assert_eq!(MySqlSslMode::all_variants(), expected.map(|(mode, _)| mode));
 
-    #[test]
-    fn mysql_tls_modes_round_trip_through_canonical_names() {
-        for mode in MySqlSslMode::all_variants() {
-            assert_eq!(mode.as_str(), mode.to_string());
-            assert_eq!(mode.as_str().parse::<MySqlSslMode>().unwrap(), *mode);
+        for (mode, name) in expected {
+            assert_eq!(serde_json::to_value(mode).unwrap(), name);
+            assert_eq!(mode.as_str(), name);
+            assert_eq!(mode.to_string(), name);
+            assert_eq!(name.parse::<MySqlSslMode>().unwrap(), mode);
         }
     }
 

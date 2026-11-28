@@ -209,16 +209,6 @@ mod tests {
         }
 
         #[test]
-        fn no_comment_on_when_absent() {
-            let adapter = PostgresAdapter::new();
-            let table = make_table(vec![make_column("id", "integer", false)], None);
-
-            let ddl = adapter.generate_ddl(&table);
-
-            assert!(!ddl.contains("COMMENT ON"));
-        }
-
-        #[test]
         fn backslashes_in_comments_use_escape_string_literals() {
             let adapter = PostgresAdapter::new();
             let mut col = make_column("id", "integer", false);

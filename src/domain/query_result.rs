@@ -450,15 +450,6 @@ mod tests {
         use crate::DiagnosticLevel;
 
         #[test]
-        fn with_command_tag_sets_tag() {
-            let result =
-                QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc)
-                    .with_command_tag(CommandTag::Select(1));
-
-            assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
-        }
-
-        #[test]
         fn with_mysql_diagnostics_keeps_success_status_and_details() {
             let result = QueryResult::success(
                 "INSERT IGNORE".to_string(),

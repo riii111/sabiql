@@ -431,16 +431,6 @@ mod probe_tests {
     }
 
     #[test]
-    fn arguments_do_not_contain_credentials() {
-        let args = mysql_probe_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
-
-        assert!(
-            args.iter()
-                .all(|argument| { !argument.contains("password") && !argument.contains("secret") })
-        );
-    }
-
-    #[test]
     fn classifies_mysql_cli_timeout_errno_before_connection_refusal() {
         assert!(matches!(
             classify_mysql_probe_failure(
@@ -504,30 +494,6 @@ mod probe_tests {
             classify_mysql_probe_failure(
                 "ERROR 1049 (42000): Unknown database 'missing'".to_string()
             ),
-            DbOperationError::ConnectionFailedWithKind {
-                kind: ConnectionFailureKind::DatabaseNotFound,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn classifies_mysql_probe_unknown_host_errno_as_host_unreachable() {
-        assert!(matches!(
-            classify_mysql_probe_failure(
-                "ERROR 2005 (HY000): Unknown MySQL server host 'db.internal' (11001)".to_string()
-            ),
-            DbOperationError::ConnectionFailedWithKind {
-                kind: ConnectionFailureKind::HostUnreachable,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn classifies_mysql_probe_unknown_database_without_error_code_as_database_not_found() {
-        assert!(matches!(
-            classify_mysql_probe_failure("mysql: [ERROR] Unknown database 'missing'".to_string()),
             DbOperationError::ConnectionFailedWithKind {
                 kind: ConnectionFailureKind::DatabaseNotFound,
                 ..

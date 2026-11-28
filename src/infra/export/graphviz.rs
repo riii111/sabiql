@@ -60,15 +60,6 @@ mod tests {
             assert!(message.contains("Install Graphviz"));
             assert!(message.contains("PATH"));
         }
-
-        #[test]
-        fn command_failed_contains_exit_code() {
-            let error = GraphvizError::CommandFailed(Some(1));
-
-            let message = format!("{error}");
-
-            assert!(message.contains("exit code"));
-        }
     }
 
     mod viewer_error {

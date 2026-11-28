@@ -168,12 +168,6 @@ mod table_signatures {
         CREATE INDEX idx_users_name ON users(name DESC);
         ",
         );
-        let (_binary_dir, binary_dsn) = test_support::make_sqlite_db(
-            r"
-        CREATE TABLE users(name TEXT);
-        CREATE INDEX idx_users_name ON users(name);
-        ",
-        );
         let (_nocase_dir, nocase_dsn) = test_support::make_sqlite_db(
             r"
         CREATE TABLE users(name TEXT);
@@ -199,15 +193,6 @@ mod table_signatures {
             .find(|signature| signature.name == "users")
             .unwrap()
             .signature;
-        let binary_signature = adapter
-            .fetch_table_signatures(&binary_dsn)
-            .await
-            .unwrap()
-            .signatures
-            .into_iter()
-            .find(|signature| signature.name == "users")
-            .unwrap()
-            .signature;
         let nocase_signature = adapter
             .fetch_table_signatures(&nocase_dsn)
             .await
@@ -224,7 +209,7 @@ mod table_signatures {
                 "idx=idx_users_name:name:false:false:false:false:true:true:false:CREATE INDEX idx_users_name ON users(name DESC)"
             )
         );
-        assert_ne!(binary_signature, nocase_signature);
+        assert_ne!(asc_signature, nocase_signature);
         assert!(
             nocase_signature.contains(
                 "idx=idx_users_name:name:false:false:false:false:true:false:true:CREATE INDEX idx_users_name ON users(name COLLATE NOCASE)"

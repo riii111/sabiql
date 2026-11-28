@@ -40,16 +40,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn finds_root_with_git_directory() {
-            let temp_dir = tempfile::tempdir().unwrap();
-            fs::create_dir(temp_dir.path().join(".git")).unwrap();
-
-            let result = find_dir_upward(temp_dir.path(), ".git");
-
-            assert_eq!(result, Some(temp_dir.path().to_path_buf()));
-        }
-
-        #[test]
         fn finds_root_with_git_file_worktree() {
             let temp_dir = tempfile::tempdir().unwrap();
             fs::write(

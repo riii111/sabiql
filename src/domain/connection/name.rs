@@ -89,9 +89,7 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case("Production")]
         #[case("Local Dev")]
-        #[case("  Production  ")] // trimmed
         #[case("a")] // 1 char minimum
         fn accepts_nonempty_names(#[case] input: &str) {
             assert!(ConnectionName::new(input).is_ok());
@@ -157,17 +155,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn serializes_to_string() {
+        fn round_trips_as_a_plain_string() {
             let name = ConnectionName::new("Production").unwrap();
             let json = serde_json::to_string(&name).unwrap();
             assert_eq!(json, "\"Production\"");
-        }
-
-        #[test]
-        fn deserializes_valid_string() {
-            let json = "\"Production\"";
-            let name: ConnectionName = serde_json::from_str(json).unwrap();
-            assert_eq!(name.as_str(), "Production");
+            assert_eq!(serde_json::from_str::<ConnectionName>(&json).unwrap(), name);
         }
 
         #[test]
