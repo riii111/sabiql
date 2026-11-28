@@ -2918,7 +2918,7 @@ mod tests {
 
             test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            let effects = crate::update::test_fixtures::switch_connection(
+            let effects = test_fixtures::switch_connection(
                 &mut state,
                 ConnectionTarget {
                     id: conn_b.clone(),
@@ -2970,7 +2970,7 @@ mod tests {
 
             test_fixtures::seed_table_detail_cache(&mut state, "public.cached");
 
-            let effects = crate::update::test_fixtures::switch_connection(
+            let effects = test_fixtures::switch_connection(
                 &mut state,
                 ConnectionTarget {
                     id: conn_b.clone(),
@@ -3021,7 +3021,7 @@ mod tests {
                 endpoint: endpoint::mysql("mysql://localhost/other", Some("other")),
             };
 
-            let effects = crate::update::test_fixtures::switch_connection(&mut state, target);
+            let effects = test_fixtures::switch_connection(&mut state, target);
 
             assert!(matches!(
                 effects.as_slice(),
@@ -3052,7 +3052,7 @@ mod tests {
                 .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
             let old_a_run_id = state.session.begin_effective_user_fetch();
 
-            crate::update::test_fixtures::switch_connection(
+            test_fixtures::switch_connection(
                 &mut state,
                 ConnectionTarget {
                     id: conn_b,
@@ -3061,7 +3061,7 @@ mod tests {
                 },
             );
 
-            let effects = crate::update::test_fixtures::switch_connection(
+            let effects = test_fixtures::switch_connection(
                 &mut state,
                 ConnectionTarget {
                     id: conn_a,
@@ -3191,7 +3191,7 @@ mod tests {
         }
 
         #[test]
-        fn metadata_loaded_with_pending_dispatches_open() {
+        fn metadata_loaded_with_pending_opens_er_picker() {
             let mut state = create_test_state();
             state.ui.request_er_picker_after_metadata();
             state.modal.set_mode(InputMode::Normal);
@@ -3210,7 +3210,7 @@ mod tests {
         }
 
         #[test]
-        fn metadata_loaded_without_pending_does_not_dispatch_open() {
+        fn metadata_loaded_without_pending_keeps_normal_mode() {
             let mut state = create_test_state();
             state.ui.reset_er_picker_request();
             let now = Instant::now();
@@ -3518,7 +3518,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_selection_initializes_pagination_via_dispatch() {
+        fn confirm_selection_initializes_pagination() {
             let (state, _now) = state_after_confirm_and_complete();
 
             assert_eq!(state.query.pagination.schema(), "public");
@@ -3893,7 +3893,7 @@ mod tests {
             let export_id = captured[selected];
             state.ui.table_picker_mut().set_selection(selected);
             let now = Instant::now();
-            let effects = crate::update::test_fixtures::switch_connection(
+            let effects = test_fixtures::switch_connection(
                 &mut state,
                 ConnectionTarget {
                     id: ConnectionId::new(),

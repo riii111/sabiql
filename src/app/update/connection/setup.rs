@@ -849,7 +849,7 @@ mod tests {
                 ),
             };
 
-            crate::update::test_fixtures::switch_connection(&mut state, target.clone());
+            test_fixtures::switch_connection(&mut state, target.clone());
             reduce(
                 &mut state,
                 &Action::ConnectionSaved {

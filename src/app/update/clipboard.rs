@@ -56,7 +56,7 @@ mod tests {
         route(
             state,
             Action::Copied {
-                target: target,
+                target,
                 outcome: Ok(()),
             },
             now,

@@ -12,6 +12,7 @@ use crate::test_support::endpoint;
 use crate::test_support::table::minimal as minimal_table;
 use crate::update::action::WriteOutcome;
 use crate::update::action::{Action, ConnectionTarget, QueryContext};
+use crate::update::connection::lifecycle;
 use crate::update::reducer::{reduce, route};
 use std::sync::Arc;
 use std::time::Instant;
@@ -156,5 +157,5 @@ pub fn edit_text(state: &mut AppState, action: &Action, now: Instant) -> Vec<Eff
 }
 
 pub fn switch_connection(state: &mut AppState, target: ConnectionTarget) -> Vec<Effect> {
-    crate::update::connection::lifecycle::switch_connection(state, target)
+    lifecycle::switch_connection(state, target)
 }

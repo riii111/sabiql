@@ -520,8 +520,8 @@ mod tests {
             state.ui.set_explorer_selected_raw(5);
             state.ui.inspector_tab = InspectorTab::Indexes;
 
-            let action = create_postgres_switch_target(&new_id, "new_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&new_id, "new_db");
+            switch_connection(&mut state, target);
 
             let saved = &state.connection_caches[&current_id];
             assert_eq!(saved.explorer_selected, 5);
@@ -651,8 +651,8 @@ mod tests {
             };
             state.connection_caches.insert(target_id.clone(), cached);
 
-            let action = create_postgres_switch_target(&target_id, "cached_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&target_id, "cached_db");
+            switch_connection(&mut state, target);
 
             assert_eq!(state.ui.explorer_selected(), 42);
             assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
@@ -672,8 +672,8 @@ mod tests {
                 .insert(target_id.clone(), ConnectionCache::default());
             let stale_run_id = state.query.begin_running(std::time::Instant::now());
 
-            let action = create_postgres_switch_target(&target_id, "cached_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&target_id, "cached_db");
+            switch_connection(&mut state, target);
 
             assert!(!state.query.is_running());
             assert!(!state.query.is_current_run(stale_run_id));
@@ -690,12 +690,12 @@ mod tests {
             };
             state.connection_caches.insert(target_id.clone(), cached);
 
-            let action = ConnectionTarget {
+            let target = ConnectionTarget {
                 id: target_id,
                 name: "app.db".to_string(),
                 endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
             };
-            switch_connection(&mut state, action.clone());
+            switch_connection(&mut state, target);
 
             assert_eq!(state.ui.inspector_tab, InspectorTab::Ddl);
         }
@@ -926,8 +926,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
 
-            let action = create_postgres_switch_target(&new_id, "fresh_db");
-            let effects = switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&new_id, "fresh_db");
+            let effects = switch_connection(&mut state, target);
 
             assert!(
                 effects
@@ -955,12 +955,12 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
 
-            let action = ConnectionTarget {
+            let target = ConnectionTarget {
                 id: new_id,
                 name: "app.db".to_string(),
                 endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
             };
-            let effects = switch_connection(&mut state, action.clone());
+            let effects = switch_connection(&mut state, target);
 
             assert!(
                 effects
@@ -1275,12 +1275,12 @@ mod tests {
                 },
             );
 
-            let action = ConnectionTarget {
+            let target = ConnectionTarget {
                 id: target_id.clone(),
                 name: "app.db".to_string(),
                 endpoint: endpoint::sqlite("sqlite:///tmp/app.db"),
             };
-            let effects = switch_connection(&mut state, action.clone());
+            let effects = switch_connection(&mut state, target);
 
             assert!(
                 !effects
@@ -1423,8 +1423,8 @@ mod tests {
                 .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
 
-            let action = create_postgres_switch_target(&new_id, "fresh_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&new_id, "fresh_db");
+            switch_connection(&mut state, target);
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
@@ -1444,8 +1444,8 @@ mod tests {
                 .connection_caches
                 .insert(target_id.clone(), ConnectionCache::default());
 
-            let action = create_postgres_switch_target(&target_id, "cached_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&target_id, "cached_db");
+            switch_connection(&mut state, target);
 
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
@@ -2310,8 +2310,8 @@ mod tests {
                 .insert(target_id.clone(), ConnectionCache::default());
             state.result_interaction.activate_cell(3, 2);
 
-            let action = create_postgres_switch_target(&target_id, "cached_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&target_id, "cached_db");
+            switch_connection(&mut state, target);
 
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -2331,8 +2331,8 @@ mod tests {
                 .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
 
-            let action = create_postgres_switch_target(&target_id, "cached_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&target_id, "cached_db");
+            switch_connection(&mut state, target);
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(!state.table_prefetch.has_pending_prefetch());
@@ -2347,8 +2347,8 @@ mod tests {
                 .table_prefetch
                 .queue_table_prefetch("public.users".to_string());
 
-            let action = create_postgres_switch_target(&new_id, "fresh_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&new_id, "fresh_db");
+            switch_connection(&mut state, target);
 
             assert!(state.table_prefetch.active_prefetch_run_id().is_none());
             assert!(!state.table_prefetch.has_pending_prefetch());
@@ -2361,8 +2361,8 @@ mod tests {
 
             state.result_interaction.activate_cell(5, 0);
 
-            let action = create_postgres_switch_target(&new_id, "fresh_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&new_id, "fresh_db");
+            switch_connection(&mut state, target);
 
             assert_eq!(
                 state.result_interaction.selection().mode(),
@@ -2380,8 +2380,8 @@ mod tests {
             let new_id = ConnectionId::new();
             state.session.enable_read_only();
 
-            let action = create_postgres_switch_target(&new_id, "fresh_db");
-            switch_connection(&mut state, action.clone());
+            let target = create_postgres_switch_target(&new_id, "fresh_db");
+            switch_connection(&mut state, target);
 
             assert!(!state.session.is_read_only());
         }

@@ -951,6 +951,7 @@ mod tests {
         use crate::ports::outbound::{AccessMode, DbOperationError};
         use crate::update::action::ConnectionTarget;
         use crate::update::reducer::reduce;
+        use crate::update::test_fixtures::switch_connection;
 
         struct PendingQueryExecutor {
             started: Mutex<Option<oneshot::Sender<()>>>,
@@ -1097,7 +1098,7 @@ mod tests {
                 .expect("pending query should start")
                 .expect("started signal should be sent");
 
-            let effects = crate::update::test_fixtures::switch_connection(
+            let effects = switch_connection(
                 &mut state,
                 ConnectionTarget {
                     id: target_id,
@@ -1182,6 +1183,125 @@ mod tests {
             })
             .await
             .expect("context cancellation should drop the pending table detail task");
+        }
+    }
+
+    mod table_load {
+        use tokio::sync::Notify;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+        use crate::domain::Table;
+        use crate::ports::outbound::DbOperationError;
+        use crate::test_support;
+
+        struct GatedTableDetailProvider {
+            release: Arc<Notify>,
+        }
+
+        #[async_trait::async_trait]
+        impl MetadataProvider for GatedTableDetailProvider {
+            async fn fetch_metadata(
+                &self,
+                _endpoint: &ConnectionEndpoint,
+            ) -> Result<DatabaseMetadata, DbOperationError> {
+                unreachable!("test only loads a table")
+            }
+
+            async fn fetch_table_detail(
+                &self,
+                _endpoint: &ConnectionEndpoint,
+                schema: &str,
+                table: &str,
+            ) -> Result<Table, DbOperationError> {
+                self.release.notified().await;
+                Ok(test_support::table::minimal(schema, table))
+            }
+
+            async fn fetch_table_columns_and_fks(
+                &self,
+                _endpoint: &ConnectionEndpoint,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only loads a table")
+            }
+
+            async fn fetch_table_signatures(
+                &self,
+                _endpoint: &ConnectionEndpoint,
+            ) -> Result<TableSignatureSnapshot, DbOperationError> {
+                unreachable!("test only loads a table")
+            }
+        }
+
+        #[tokio::test]
+        async fn delivers_detail_before_an_earlier_finished_preview() {
+            let release = Arc::new(Notify::new());
+            let mut executor = MockQueryExecutor::new();
+            executor
+                .expect_execute_preview()
+                .once()
+                .returning(|_, _, _, _, _| Ok(test_fixtures::sample_query_result()));
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(GatedTableDetailProvider {
+                    release: Arc::clone(&release),
+                }),
+                Arc::new(executor),
+                Arc::new(MockConnectionStore::new()),
+                tx,
+            );
+
+            runner
+                .execute_effects(
+                    vec![Effect::LoadTable {
+                        endpoint: endpoint::postgres("postgres://localhost/test"),
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                        generation: 1,
+                        detail_run_id: 2,
+                        preview_run_id: 3,
+                        limit: 500,
+                        offset: 0,
+                        target_page: 0,
+                    }],
+                    &mut NoopRenderer,
+                    &mut AppState::new("test".to_string()),
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert!(
+                timeout(Duration::from_millis(50), rx.recv()).await.is_err(),
+                "preview was delivered before the table detail"
+            );
+            release.notify_one();
+
+            let first =
+                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            let second =
+                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
+            assert!(matches!(
+                first,
+                Action::TableDetailLoaded {
+                    run_id: 2,
+                    generation: 1,
+                    outcome: Ok(_),
+                    ..
+                }
+            ));
+            assert!(matches!(
+                second,
+                Action::QueryCompleted {
+                    run_id: 3,
+                    context: QueryContext::Preview {
+                        generation: 1,
+                        target_page: 0
+                    },
+                    outcome: Ok(_),
+                }
+            ));
         }
     }
 
