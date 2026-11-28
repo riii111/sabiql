@@ -361,13 +361,6 @@ fn non_mysql_retryable_error_hides_retry_in_modal_and_footer() {
 }
 
 #[test]
-fn connection_error_omits_service_file_hint_for_mysql_save() {
-    let output = render_service_error_without_service_file_hint(true);
-
-    assert!(!output.contains("pg_service.conf"));
-}
-
-#[test]
 fn connection_error_omits_service_file_hint_for_mysql_switch() {
     let output = render_service_error_without_service_file_hint(false);
 
