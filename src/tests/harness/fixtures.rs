@@ -7,14 +7,9 @@ use sabiql_domain::{
 pub fn sample_metadata() -> DatabaseMetadata {
     let mut metadata = DatabaseMetadata::new("test_db".to_string());
     metadata.table_summaries = vec![
-        TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-        TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-        TableSummary::new(
-            "public".to_string(),
-            "comments".to_string(),
-            Some(200),
-            false,
-        ),
+        TableSummary::new("public".to_string(), "users".to_string(), Some(100)),
+        TableSummary::new("public".to_string(), "posts".to_string(), Some(50)),
+        TableSummary::new("public".to_string(), "comments".to_string(), Some(200)),
     ];
     metadata
 }

@@ -253,10 +253,6 @@ impl ConnectionSetupState {
         self.validation_errors.get(&field).map(String::as_str)
     }
 
-    pub fn has_validation_error(&self, field: ConnectionField) -> bool {
-        self.validation_errors.contains_key(&field)
-    }
-
     pub fn has_validation_errors(&self) -> bool {
         !self.validation_errors.is_empty()
     }
@@ -331,10 +327,6 @@ impl ConnectionSetupState {
 
     pub fn focused_input_mut(&mut self) -> Option<&mut TextInputState> {
         self.input_mut(self.focused_field)
-    }
-
-    pub fn clear_errors(&mut self) {
-        self.validation_errors.clear();
     }
 
     pub fn reset(&mut self) {
@@ -1023,19 +1015,6 @@ mod tests {
                 .validation_errors
                 .insert(ConnectionField::Host, "Required".to_string());
             assert!(state.has_validation_errors());
-        }
-
-        #[test]
-        fn clear_errors_removes_all_errors() {
-            let mut state = ConnectionSetupState::default();
-            state
-                .validation_errors
-                .insert(ConnectionField::Host, "Required".to_string());
-            state
-                .validation_errors
-                .insert(ConnectionField::Port, "Invalid".to_string());
-            state.clear_errors();
-            assert!(!state.has_validation_errors());
         }
 
         #[test]

@@ -8,14 +8,14 @@ use crate::primitives::atoms::scroll_indicator::{
 };
 use crate::theme::ThemePalette;
 
-pub struct StripedTableConfig<'b> {
-    pub headers: &'b [&'b str],
-    pub widths: &'b [Constraint],
-    pub total_items: usize,
-    pub empty_message: &'b str,
+pub(crate) struct StripedTableConfig<'b> {
+    pub(crate) headers: &'b [&'b str],
+    pub(crate) widths: &'b [Constraint],
+    pub(crate) total_items: usize,
+    pub(crate) empty_message: &'b str,
 }
 
-pub fn render_striped_table<'a>(
+pub(crate) fn render_striped_table<'a>(
     frame: &mut Frame,
     area: Rect,
     config: &StripedTableConfig<'_>,

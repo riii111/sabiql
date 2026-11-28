@@ -1571,7 +1571,6 @@ mod tests {
                     "public".to_string(),
                     format!("table_{i:02}"),
                     Some(100),
-                    false,
                 ));
             }
 
@@ -1595,7 +1594,6 @@ mod tests {
                     "myschema".to_string(),
                     format!("foo_{i}"),
                     None,
-                    false,
                 ));
             }
 
@@ -1635,8 +1633,8 @@ mod tests {
 
             let mut metadata = DatabaseMetadata::new("test_db".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("users".to_string(), "data".to_string(), None, false),
-                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("users".to_string(), "data".to_string(), None),
+                TableSummary::new("public".to_string(), "users".to_string(), None),
             ];
 
             let candidates = e.table_candidates(Some(&metadata), "u");
@@ -1743,7 +1741,6 @@ mod tests {
                 "app".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
             metadata
         }
@@ -1781,8 +1778,8 @@ mod tests {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("app".to_string(), "Foo".to_string(), None, false),
-                TableSummary::new("app".to_string(), "foo".to_string(), None, false),
+                TableSummary::new("app".to_string(), "Foo".to_string(), None),
+                TableSummary::new("app".to_string(), "foo".to_string(), None),
             ];
 
             let sql = "SELECT * FROM f";
@@ -1819,8 +1816,8 @@ mod tests {
             let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("app".to_string(), "Foo".to_string(), None, false),
-                TableSummary::new("app".to_string(), "foo".to_string(), None, false),
+                TableSummary::new("app".to_string(), "Foo".to_string(), None),
+                TableSummary::new("app".to_string(), "foo".to_string(), None),
             ];
 
             let sql = "SELECT f.ex FROM Foo AS f";
@@ -1857,8 +1854,8 @@ mod tests {
             let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("app".to_string(), "foo".to_string(), None, false),
-                TableSummary::new("app".to_string(), "Foo".to_string(), None, false),
+                TableSummary::new("app".to_string(), "foo".to_string(), None),
+                TableSummary::new("app".to_string(), "Foo".to_string(), None),
             ];
 
             let sql = "SELECT Foo.ex FROM foo JOIN Foo";
@@ -1894,7 +1891,6 @@ mod tests {
                 "app".to_string(),
                 "Foo".to_string(),
                 None,
-                false,
             )];
 
             let sql = "SELECT f.fal FROM foo AS f";
@@ -1927,7 +1923,6 @@ mod tests {
                 "app".to_string(),
                 "Foo".to_string(),
                 None,
-                false,
             )];
 
             let sql = "SELECT f.qu FROM app.foo AS f";
@@ -1961,7 +1956,6 @@ mod tests {
                 "app".to_string(),
                 "orders".to_string(),
                 None,
-                false,
             ));
 
             let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o WHERE o.ord";
@@ -1994,7 +1988,6 @@ mod tests {
                 "app".to_string(),
                 "orders".to_string(),
                 None,
-                false,
             ));
 
             let sql = "SELECT * FROM users u USE INDEX FOR JOIN (idx_users) STRAIGHT_JOIN orders o WHERE o.ord";
@@ -2027,7 +2020,6 @@ mod tests {
                 "app".to_string(),
                 "events".to_string(),
                 None,
-                false,
             ));
 
             let sql = "SELECT * FROM events PARTITION (p0) AS e WHERE e.eve";
@@ -2057,8 +2049,8 @@ mod tests {
             let e = CompletionEngine::new(&cache);
             let mut metadata = metadata();
             metadata.table_summaries.extend([
-                TableSummary::new("app".to_string(), "orders".to_string(), None, false),
-                TableSummary::new("app".to_string(), "items".to_string(), None, false),
+                TableSummary::new("app".to_string(), "orders".to_string(), None),
+                TableSummary::new("app".to_string(), "items".to_string(), None),
             ]);
 
             let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o ON u.id = o.user_id STRAIGHT_JOIN items i ON i.order_id = o.id WHERE i.ite";
@@ -2091,7 +2083,6 @@ mod tests {
                 "app".to_string(),
                 "ÄFoo".to_string(),
                 None,
-                false,
             )];
 
             let sql = "SELECT f.uni FROM äfoo AS f";
@@ -2119,7 +2110,6 @@ mod tests {
                 "app".to_string(),
                 "app".to_string(),
                 None,
-                false,
             )];
 
             let sql = "SELECT * FROM app";
@@ -2157,8 +2147,8 @@ mod tests {
             let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("app".to_string(), "Foo".to_string(), None, false),
-                TableSummary::new("app".to_string(), "foo".to_string(), None, false),
+                TableSummary::new("app".to_string(), "Foo".to_string(), None),
+                TableSummary::new("app".to_string(), "foo".to_string(), None),
             ];
 
             let sql = "SELECT f.col FROM FOO AS f";
@@ -2427,8 +2417,8 @@ mod tests {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("app`db".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("app`db".to_string(), "users".to_string(), None, false),
-                TableSummary::new("other".to_string(), "events".to_string(), None, false),
+                TableSummary::new("app`db".to_string(), "users".to_string(), None),
+                TableSummary::new("other".to_string(), "events".to_string(), None),
             ];
             let sql = "SELECT * FROM `app``db`.";
             let candidates = e.get_candidates_for_database(
@@ -2459,8 +2449,8 @@ mod tests {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("app".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("app".to_string(), "order`items".to_string(), None, false),
-                TableSummary::new("app".to_string(), "users".to_string(), None, false),
+                TableSummary::new("app".to_string(), "order`items".to_string(), None),
+                TableSummary::new("app".to_string(), "users".to_string(), None),
             ];
 
             let candidates = e.get_candidates_for_database(
@@ -2643,9 +2633,7 @@ mod tests {
             let mut metadata = DatabaseMetadata::new(schema.to_string());
             metadata.table_summaries = tables
                 .iter()
-                .map(|table| {
-                    TableSummary::new(schema.to_string(), (*table).to_string(), None, false)
-                })
+                .map(|table| TableSummary::new(schema.to_string(), (*table).to_string(), None))
                 .collect();
             metadata
         }
@@ -2843,7 +2831,6 @@ mod tests {
                 "main".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
             engine()
                 .get_candidates_for_database(
@@ -3078,7 +3065,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             let candidates = e.cte_or_table_candidates(&sql_context, Some(&metadata), "");
@@ -3144,7 +3130,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             let candidates = e.alias_column_candidates(
@@ -3217,7 +3202,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             let candidates = e.alias_column_candidates(
@@ -3415,7 +3399,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             let missing = e.missing_tables("SELECT * FROM users", Some(&metadata));
@@ -3436,7 +3419,7 @@ mod tests {
                 "later_table",
             ]
             .into_iter()
-            .map(|name| TableSummary::new("public".to_string(), name.to_string(), None, false))
+            .map(|name| TableSummary::new("public".to_string(), name.to_string(), None))
             .collect();
 
             for database_type in DatabaseType::all() {
@@ -3458,7 +3441,7 @@ mod tests {
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = ["first_table", "current_table", "later_table"]
                 .into_iter()
-                .map(|name| TableSummary::new("public".to_string(), name.to_string(), None, false))
+                .map(|name| TableSummary::new("public".to_string(), name.to_string(), None))
                 .collect();
 
             let before_semicolon = "SELECT * FROM first_table; SELECT * FROM later_table";
@@ -3512,8 +3495,8 @@ mod tests {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("public".to_string(), "users".to_string(), None, false),
-                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+                TableSummary::new("public".to_string(), "users".to_string(), None),
+                TableSummary::new("public".to_string(), "orders".to_string(), None),
             ];
 
             let missing = e.missing_tables(
@@ -3543,8 +3526,8 @@ mod tests {
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("public".to_string(), "users".to_string(), None, false),
-                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+                TableSummary::new("public".to_string(), "users".to_string(), None),
+                TableSummary::new("public".to_string(), "orders".to_string(), None),
             ];
 
             let missing = e.missing_tables(
@@ -3565,7 +3548,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             let missing = e.missing_tables(
@@ -3586,7 +3568,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             let missing = e.missing_tables(
@@ -3680,7 +3661,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             // "u." should trigger alias column completion from cache
@@ -3718,7 +3698,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             // "u." without cache should fallback to keywords
@@ -3883,8 +3862,8 @@ mod tests {
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("public".to_string(), "users".to_string(), None, false),
-                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+                TableSummary::new("public".to_string(), "users".to_string(), None),
+                TableSummary::new("public".to_string(), "orders".to_string(), None),
             ];
 
             // UPDATE users with subquery referencing orders
@@ -3926,7 +3905,6 @@ mod tests {
                 "public".to_string(),
                 "users".to_string(),
                 None,
-                false,
             )];
 
             // SELECT has no target, so no boost
@@ -3987,8 +3965,8 @@ mod tests {
             let e = CompletionEngine::new(&cache);
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("public".to_string(), "users".to_string(), None, false),
-                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+                TableSummary::new("public".to_string(), "users".to_string(), None),
+                TableSummary::new("public".to_string(), "orders".to_string(), None),
             ];
 
             let candidates = e.get_candidates("SELECT na FROM users", 9, Some(&metadata), None);
@@ -4007,9 +3985,7 @@ mod tests {
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = names
                 .iter()
-                .map(|name| {
-                    TableSummary::new("public".to_string(), (*name).to_string(), None, false)
-                })
+                .map(|name| TableSummary::new("public".to_string(), (*name).to_string(), None))
                 .collect();
             metadata
         }
@@ -4066,7 +4042,7 @@ mod tests {
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = ["first_table", "current_table", "later_table"]
                 .into_iter()
-                .map(|name| TableSummary::new("public".to_string(), name.to_string(), None, false))
+                .map(|name| TableSummary::new("public".to_string(), name.to_string(), None))
                 .collect();
             let sql = "SELECT * FROM first_table; SELECT * FROM current_table WHERE ; SELECT * FROM later_table";
             let cursor_pos = sql.find("; SELECT * FROM later_table").unwrap();

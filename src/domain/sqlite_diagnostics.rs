@@ -23,13 +23,6 @@ impl DiagnosticField {
         }
     }
 
-    pub fn err_message(&self) -> Option<&str> {
-        match self {
-            Self::Err(message) => Some(message.as_str()),
-            Self::Unavailable | Self::Pending | Self::Ok(_) => None,
-        }
-    }
-
     pub fn is_ok(&self) -> bool {
         matches!(self, Self::Ok(_))
     }
@@ -88,7 +81,6 @@ mod tests {
         let field = DiagnosticField::ok("value");
 
         assert_eq!(field.ok_value(), Some("value"));
-        assert!(field.err_message().is_none());
     }
 
     #[test]
@@ -99,7 +91,6 @@ mod tests {
         assert!(!field.is_ok());
         assert!(!field.is_err());
         assert!(field.ok_value().is_none());
-        assert!(field.err_message().is_none());
     }
 
     #[test]

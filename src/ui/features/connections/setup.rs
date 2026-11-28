@@ -38,10 +38,10 @@ fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> 
     ])
 }
 
-pub struct ConnectionSetup;
+pub(crate) struct ConnectionSetup;
 
 impl ConnectionSetup {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
         services: &AppServices,

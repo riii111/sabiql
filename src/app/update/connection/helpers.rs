@@ -16,8 +16,8 @@ fn reset_connection_scoped_state(state: &mut AppState) {
     state.explain.reset_for_connection_change();
     state.er_preparation.reset();
     state.ui.reset_er_picker_request();
-    state.ui.set_inspector_scroll_offset(0);
-    state.ui.set_inspector_horizontal_offset(0);
+    state.ui.inspector_scroll_offset = 0;
+    state.ui.inspector_horizontal_offset = 0;
     state.sqlite_diagnostics.clear();
 }
 
@@ -26,15 +26,15 @@ fn reconcile_connection_state(state: &mut AppState, inspector_tab: InspectorTab)
     let inspector_tab = profile.normalize_inspector_tab(inspector_tab);
     let sql_modal_tab = profile.normalize_sql_modal_tab(state.sql_modal.active_tab());
 
-    state.ui.set_inspector_tab(inspector_tab);
+    state.ui.inspector_tab = inspector_tab;
     state.sql_modal.set_active_tab(sql_modal_tab);
 }
 
 pub(super) fn reset_for_new_connection(state: &mut AppState, target: &ConnectionTarget) {
-    let inspector_tab = state.ui.inspector_tab();
+    let inspector_tab = state.ui.inspector_tab;
     let sql_modal_tab = state.sql_modal.active_tab();
     reset_state_before_connection_reconciliation(state);
-    state.ui.set_inspector_tab(inspector_tab);
+    state.ui.inspector_tab = inspector_tab;
     state.sql_modal.set_active_tab(sql_modal_tab);
     state
         .session
@@ -82,7 +82,7 @@ pub(super) fn save_current_connection_cache(state: &mut AppState) {
 
     let cache = state.session.to_cache(
         state.ui.explorer_selected(),
-        state.ui.inspector_tab(),
+        state.ui.inspector_tab,
         state.query.current_result().cloned(),
         state.query.pagination.clone(),
     );
@@ -114,7 +114,7 @@ pub(super) fn cancel_connection_task_effects(state: &mut AppState) -> Vec<Effect
 }
 
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
-    let inspector_tab = state.ui.inspector_tab();
+    let inspector_tab = state.ui.inspector_tab;
     reset_state_before_connection_reconciliation(state);
     reconcile_connection_state(state, inspector_tab);
 }

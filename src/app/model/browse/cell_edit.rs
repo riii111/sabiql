@@ -73,10 +73,6 @@ impl CellEditState {
         self.input.set_content(content);
     }
 
-    pub fn set_cursor(&mut self, cursor: usize) {
-        self.input.set_cursor(cursor);
-    }
-
     pub fn has_pending_draft(&self) -> bool {
         self.is_active() && self.input.content() != self.original_value
     }

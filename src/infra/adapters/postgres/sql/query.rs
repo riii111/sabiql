@@ -10,8 +10,7 @@ impl PostgresAdapter {
             SELECT
                 n.nspname as schema,
                 c.relname as name,
-                c.reltuples::bigint as row_count_estimate,
-                c.relrowsecurity as has_rls
+                c.reltuples::bigint as row_count_estimate
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind = 'r'

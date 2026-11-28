@@ -2,9 +2,9 @@ mod data_table;
 mod filter_input;
 mod hint_bar;
 mod modal_frame;
-pub mod overlay;
+pub(crate) mod overlay;
 
-pub use data_table::{StripedTableConfig, render_striped_table};
-pub use filter_input::render_filter_input_line;
-pub use hint_bar::{FooterHintBar, FooterHintItem, chip_hint_line, hint_line};
-pub use modal_frame::{render_modal, render_modal_with_border_color};
+pub(crate) use data_table::{StripedTableConfig, render_striped_table};
+pub(crate) use filter_input::render_filter_input_line;
+pub(crate) use hint_bar::FooterHintBar;
+pub(crate) use modal_frame::{render_modal, render_modal_with_border_color};

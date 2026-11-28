@@ -16,10 +16,10 @@ use crate::theme::ThemePalette;
 const LEFT_SEPARATOR: &str = " ▸ ";
 const RIGHT_SEPARATOR: &str = " | ";
 
-pub struct Header;
+pub(super) struct Header;
 
 impl Header {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
+    pub(super) fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let mode = state.settings.saved_icon_mode();
         let project = format!("{}{}", Icon::Project.prefix(mode), state.project_name());
         let db_name = state.session.database_name().map_or_else(

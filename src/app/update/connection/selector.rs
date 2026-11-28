@@ -96,14 +96,6 @@ pub(in crate::update) fn connection_deleted(
     }
 }
 
-pub(in crate::update) fn connection_delete_failed(
-    state: &mut AppState,
-    error: String,
-) -> Vec<Effect> {
-    state.messages.set_error(error);
-    vec![]
-}
-
 pub(in crate::update) fn request_edit_selected_connection(state: &AppState) -> Vec<Effect> {
     use crate::model::connection::list::ConnectionListItem;
     let selected_idx = state.ui.connection_list_selected();
@@ -480,14 +472,14 @@ mod tests {
                 .set_connection_state(ConnectionState::Connected);
 
             // Set state that was previously not reset by ConnectionDeleted.
-            state.query.pagination.set_current_page(3);
+            state.query.pagination.set_page_result(3, false);
             state.result_interaction.activate_cell(5, 0);
             state.result_interaction.set_scroll_offset(10);
             state.result_interaction.set_horizontal_offset(20);
             state.result_interaction.stage_row(0);
-            state.ui.set_inspector_tab(InspectorTab::Rls);
-            state.ui.set_inspector_scroll_offset(17);
-            state.ui.set_inspector_horizontal_offset(23);
+            state.ui.inspector_tab = InspectorTab::Rls;
+            state.ui.inspector_scroll_offset = 17;
+            state.ui.inspector_horizontal_offset = 23;
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.set_plan(
                 "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
@@ -504,7 +496,7 @@ mod tests {
                 "SELECT * FROM users WHERE id = 1",
             );
             state.explain.set_error("stale error".to_string());
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch
@@ -526,9 +518,9 @@ mod tests {
             assert_eq!(state.result_interaction.horizontal_offset(), 0);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert!(state.result_interaction.pending_write_preview().is_none());
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
-            assert_eq!(state.ui.inspector_scroll_offset(), 0);
-            assert_eq!(state.ui.inspector_horizontal_offset(), 0);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Info);
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
+            assert_eq!(state.ui.inspector_horizontal_offset, 0);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
             assert_explain_state_cleared(&state);
             assert_sqlite_diagnostics_cleared(&state);
@@ -552,9 +544,9 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
-            state.ui.set_inspector_tab(InspectorTab::Ddl);
-            state.ui.set_inspector_scroll_offset(17);
-            state.ui.set_inspector_horizontal_offset(23);
+            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.inspector_scroll_offset = 17;
+            state.ui.inspector_horizontal_offset = 23;
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.set_plan(
                 "SCAN users".to_string(),
@@ -577,9 +569,9 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
-            assert_eq!(state.ui.inspector_scroll_offset(), 0);
-            assert_eq!(state.ui.inspector_horizontal_offset(), 0);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Info);
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
+            assert_eq!(state.ui.inspector_horizontal_offset, 0);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
             assert_explain_state_cleared(&state);
             assert_sqlite_diagnostics_cleared(&state);

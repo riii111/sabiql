@@ -6,7 +6,7 @@ use super::scroll::{result_col_count, result_row_count};
 
 fn ensure_cell_visible(state: &mut AppState) {
     if let Some(col) = state.result_interaction.selection().cell() {
-        let plan = state.ui.result_viewport_plan();
+        let plan = &state.ui.result_viewport_plan;
         let h_offset = state.result_interaction.horizontal_offset();
         if col < h_offset {
             state.result_interaction.set_horizontal_offset(col);
@@ -32,11 +32,6 @@ pub(in crate::update) fn result_activate_cell(state: &mut AppState) -> Vec<Effec
     vec![]
 }
 
-pub(in crate::update) fn result_exit_to_scroll(state: &mut AppState) -> Vec<Effect> {
-    state.result_interaction.exit_cell_to_scroll();
-    vec![]
-}
-
 pub(in crate::update) fn result_cell_left(state: &mut AppState) -> Vec<Effect> {
     if let Some(c) = state.result_interaction.selection().cell()
         && c > 0
@@ -58,11 +53,6 @@ pub(in crate::update) fn result_cell_right(state: &mut AppState) -> Vec<Effect> 
     vec![]
 }
 
-pub(in crate::update) fn result_delete_operator_pending(state: &mut AppState) -> Vec<Effect> {
-    state.result_interaction.start_delete_operator();
-    vec![]
-}
-
 pub(in crate::update) fn stage_row_for_delete(state: &mut AppState) -> Vec<Effect> {
     if state.session.is_read_only() {
         state
@@ -79,16 +69,6 @@ pub(in crate::update) fn stage_row_for_delete(state: &mut AppState) -> Vec<Effec
     if let Some(row_idx) = state.result_interaction.selection().row() {
         state.result_interaction.stage_row(row_idx);
     }
-    vec![]
-}
-
-pub(in crate::update) fn unstage_last_staged_row(state: &mut AppState) -> Vec<Effect> {
-    state.result_interaction.unstage_last_row();
-    vec![]
-}
-
-pub(in crate::update) fn clear_staged_deletes(state: &mut AppState) -> Vec<Effect> {
-    state.result_interaction.clear_staged_deletes();
     vec![]
 }
 

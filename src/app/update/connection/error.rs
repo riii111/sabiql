@@ -19,11 +19,6 @@ pub(in crate::update) fn close_connection_error(state: &mut AppState) -> Vec<Eff
     cancel_effects
 }
 
-pub(in crate::update) fn toggle_connection_error_details(state: &mut AppState) -> Vec<Effect> {
-    state.connection_error.toggle_details();
-    vec![]
-}
-
 pub(in crate::update) fn scroll_connection_error(
     state: &mut AppState,
     direction: ScrollDirection,

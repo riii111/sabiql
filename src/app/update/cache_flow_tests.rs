@@ -178,7 +178,7 @@ fn metadata(names: &[&str]) -> Arc<DatabaseMetadata> {
     let mut metadata = DatabaseMetadata::new("app".to_string());
     metadata.table_summaries = names
         .iter()
-        .map(|name| TableSummary::new("public".to_string(), (*name).to_string(), None, false))
+        .map(|name| TableSummary::new("public".to_string(), (*name).to_string(), None))
         .collect();
     Arc::new(metadata)
 }
@@ -232,10 +232,7 @@ fn postgres_state(tables: &[&str]) -> AppState {
 
 fn open_sql_modal(state: &mut AppState, content: &str) {
     state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor_mut_for_input()
-        .set_content(content.to_string());
+    state.sql_modal.editor.set_content(content.to_string());
 }
 
 fn candidate_texts(state: &AppState) -> Vec<String> {

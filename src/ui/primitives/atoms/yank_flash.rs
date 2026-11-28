@@ -3,7 +3,7 @@ use ratatui::text::Line;
 
 use crate::theme::ThemePalette;
 
-pub fn apply_yank_flash(lines: &mut [Line], active: bool, theme: &ThemePalette) {
+pub(crate) fn apply_yank_flash(lines: &mut [Line], active: bool, theme: &ThemePalette) {
     if !active {
         return;
     }
@@ -15,7 +15,7 @@ pub fn apply_yank_flash(lines: &mut [Line], active: bool, theme: &ThemePalette) 
     }
 }
 
-pub fn apply_yank_flash_masked(
+pub(crate) fn apply_yank_flash_masked(
     lines: &mut [Line],
     active: bool,
     mask: &[bool],

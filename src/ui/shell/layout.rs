@@ -50,7 +50,7 @@ impl MainLayout {
             time_ms,
             services,
             now,
-            palette_for(state.ui.theme_id()),
+            palette_for(state.ui.theme_id),
         )
     }
 

@@ -174,25 +174,24 @@ impl AppState {
 
     fn apply_browse_layout(&mut self, layout: BrowseLayout) {
         if !self.ui.is_focus_mode() {
-            self.ui
-                .set_inspector_viewport_plan(layout.inspector.viewport_plan);
+            self.ui.inspector_horizontal_offset = self
+                .ui
+                .inspector_horizontal_offset
+                .min(layout.inspector.viewport_plan.max_offset);
+            self.ui.inspector_viewport_plan = layout.inspector.viewport_plan;
         }
-        self.ui
-            .set_result_viewport_plan(layout.result.viewport_plan);
-        self.ui.set_result_widths_cache(layout.result.widths_cache);
+        self.ui.result_viewport_plan = layout.result.viewport_plan;
+        self.ui.result_widths_cache = layout.result.widths_cache;
         self.ui
             .set_explorer_pane_height(layout.explorer.pane_height);
-        self.ui
-            .set_explorer_content_width(layout.explorer.content_width);
+        self.ui.explorer_content_width = layout.explorer.content_width;
         let max_name_width = max_explorer_table_label_width(
             self.tables(),
             self.session.active_database_type_or_default(),
         );
-        let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width());
-        self.ui
-            .set_explorer_horizontal_offset(self.ui.explorer_horizontal_offset().min(max_offset));
-        self.ui
-            .set_inspector_pane_height(layout.inspector.pane_height);
+        let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width);
+        self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
+        self.ui.inspector_pane_height = layout.inspector.pane_height;
         self.ui.set_result_pane_height(layout.result.pane_height);
     }
 
@@ -230,8 +229,7 @@ impl AppState {
 
     fn apply_detail_layout(&mut self, layout: DetailLayout) {
         if let Some(json) = layout.json {
-            self.ui
-                .set_json_detail_editor_visible_rows(json.editor_visible_rows);
+            self.ui.json_detail_editor_visible_rows = json.editor_visible_rows;
             self.json_detail
                 .editor_mut()
                 .update_scroll(json.editor_visible_rows);
@@ -275,7 +273,7 @@ impl AppState {
     pub fn inspector_view_model(&self, ddl_generator: &dyn DdlGenerator) -> InspectorViewModel {
         InspectorViewModel::build_with_detail_state(
             &self.session.active_engine_feature_profile(),
-            self.ui.inspector_tab(),
+            self.ui.inspector_tab,
             self.session.table_detail_state(),
             self.session.active_database_type_or_default(),
             ddl_generator,
@@ -1056,7 +1054,7 @@ mod tests {
         #[test]
         fn inspector_horizontal_scroll_offset_clamps_when_viewport_changes() {
             let mut state = make_state();
-            state.ui.set_inspector_horizontal_offset(500);
+            state.ui.inspector_horizontal_offset = 500;
             let output = RenderOutput {
                 browse: BrowseLayout {
                     inspector: InspectorLayout {
@@ -1073,16 +1071,16 @@ mod tests {
 
             state.apply_render_output(output);
 
-            assert_eq!(state.ui.inspector_horizontal_offset(), 10);
+            assert_eq!(state.ui.inspector_horizontal_offset, 10);
         }
 
         #[test]
         fn focus_mode_preserves_inspector_viewport_plan() {
             let mut state = make_state();
-            state.ui.set_inspector_viewport_plan(ViewportPlan {
+            state.ui.inspector_viewport_plan = ViewportPlan {
                 column_count: 2,
                 ..ViewportPlan::default()
-            });
+            };
             state.ui.toggle_focus();
             let output = RenderOutput {
                 browse: BrowseLayout {
@@ -1100,8 +1098,8 @@ mod tests {
 
             state.apply_render_output(output);
 
-            assert_eq!(state.ui.inspector_viewport_plan().column_count, 2);
-            assert_eq!(state.ui.inspector_pane_height(), 30);
+            assert_eq!(state.ui.inspector_viewport_plan.column_count, 2);
+            assert_eq!(state.ui.inspector_pane_height, 30);
         }
     }
 
@@ -1169,8 +1167,8 @@ mod tests {
         fn empty_filter_returns_all() {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
-                TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-                TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
+                TableSummary::new("public".to_string(), "users".to_string(), Some(100)),
+                TableSummary::new("public".to_string(), "posts".to_string(), Some(50)),
             ])));
             state.ui.table_picker_mut().clear_filter();
 
@@ -1183,8 +1181,8 @@ mod tests {
         fn substring_filter_matches() {
             let mut state = make_state();
             state.session.set_metadata(Some(make_metadata(vec![
-                TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-                TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
+                TableSummary::new("public".to_string(), "users".to_string(), Some(100)),
+                TableSummary::new("public".to_string(), "posts".to_string(), Some(50)),
             ])));
             state.ui.table_picker_mut().insert_filter_str("user");
 
@@ -1203,7 +1201,6 @@ mod tests {
                     "public".to_string(),
                     "Users".to_string(),
                     Some(100),
-                    false,
                 )])));
             state.ui.table_picker_mut().insert_filter_str("user");
 
@@ -1608,7 +1605,7 @@ mod tests {
                 let generation = state.session.selection_generation();
                 activate_postgres_connection(&mut state, "dsn://test");
                 let run_id = state.session.begin_table_detail_run();
-                state.ui.set_inspector_scroll_offset(42);
+                state.ui.inspector_scroll_offset = 42;
 
                 reduce(
                     &mut state,
@@ -1622,7 +1619,7 @@ mod tests {
                     &AppServices::stub(),
                 );
 
-                assert_eq!(state.ui.inspector_scroll_offset(), 0);
+                assert_eq!(state.ui.inspector_scroll_offset, 0);
             }
         }
     }

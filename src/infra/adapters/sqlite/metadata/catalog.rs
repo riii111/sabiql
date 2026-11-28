@@ -11,7 +11,7 @@ pub(super) fn metadata_from_catalog(path: &str, tables: &[RawTable]) -> Database
     metadata.table_summaries = tables
         .iter()
         .map(|table| {
-            TableSummary::new(MAIN_SCHEMA.to_string(), table.name.clone(), None, false)
+            TableSummary::new(MAIN_SCHEMA.to_string(), table.name.clone(), None)
                 .with_kind_info(table_kind_info_from_raw(&table.kind))
         })
         .collect();

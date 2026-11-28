@@ -13,7 +13,7 @@ pub(in crate::update) fn scroll_explain_confirm(
             const CONFIRM_HEADER_LINES: usize = 8;
             let content_lines =
                 CONFIRM_HEADER_LINES + state.sql_modal.editor.content().lines().count();
-            let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height());
+            let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
             let max = content_lines.saturating_sub(modal_inner);
             let offset = &mut state.explain.confirm_scroll_offset;
             *offset = direction.clamp_vertical_offset(*offset, max, 1);
@@ -32,7 +32,7 @@ pub(in crate::update) fn scroll_explain_plan(
 ) {
     match amount {
         ScrollAmount::Line => {
-            let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height());
+            let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
             let max = state.explain.line_count().saturating_sub(modal_inner);
             let offset = &mut state.explain.scroll_offset;
             *offset = direction.clamp_vertical_offset(*offset, max, 1);
@@ -51,7 +51,7 @@ pub(in crate::update) fn scroll_explain_compare(
 ) {
     match amount {
         ScrollAmount::Line => {
-            let max = state.explain.compare_max_scroll(state.ui.terminal_height());
+            let max = state.explain.compare_max_scroll(state.ui.terminal_height);
             let offset = &mut state.explain.compare_scroll_offset;
             *offset = direction.clamp_vertical_offset(*offset, max, 1);
         }
