@@ -6,7 +6,7 @@ use super::explain_context::ExplainContext;
 use crate::domain::connection::{
     ConnectionEndpoint, ConnectionId, ConnectionProfile, ServiceEntry,
 };
-use crate::domain::{Column, DatabaseType, TableSummary};
+use crate::domain::{Column, DatabaseType, QueryResult, TableSummary};
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::browse::query_execution::{QueryExecution, VisibleResultKind};
@@ -24,13 +24,14 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
-use crate::model::shared::motion::MotionState;
+use crate::model::shared::motion::{MotionState, ScrolledPane};
 use crate::model::shared::render_output::{
     BrowseLayout, DetailLayout, InputLayout, OverlayLayout, PickerLayouts, RenderOutput,
 };
 use crate::model::shared::settings::SettingsState;
 use crate::model::shared::text_input::TextInputState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
+use crate::model::shared::viewport::max_scroll_offset;
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
@@ -212,7 +213,22 @@ impl AppState {
         let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width);
         self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
         self.ui.inspector_pane_height = layout.inspector.pane_height;
+        let previous_visible_rows = self.result_visible_rows();
         self.ui.set_result_pane_height(layout.result.pane_height);
+        if layout.pane_areas.result.is_some() {
+            if previous_visible_rows != self.result_visible_rows()
+                && matches!(self.motion.scroll_target(), Some((ScrolledPane::Result, _)))
+            {
+                self.motion.cancel_scroll();
+            }
+            let total = self
+                .query
+                .visible_result()
+                .map_or(0, QueryResult::data_row_count);
+            let max_offset = max_scroll_offset(total, self.result_visible_rows());
+            self.result_interaction
+                .set_scroll_offset(self.result_interaction.scroll_offset().min(max_offset));
+        }
         self.ui.pane_areas = layout.pane_areas;
     }
 

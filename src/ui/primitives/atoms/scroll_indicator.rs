@@ -4,6 +4,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
+use crate::app::model::shared::viewport::max_scroll_offset;
 use crate::theme::ThemePalette;
 
 pub(crate) struct HorizontalScrollParams {
@@ -162,12 +163,22 @@ pub(crate) fn render_vertical_scroll_indicator_bar(
             arrow_inactive
         });
 
-    // Workaround for Ratatui scrollbar bug (issue #1681):
-    // content_length should be the scrollable range, not total items
-    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
+    // Ratatui treats content_length - 1 as the maximum position.
+    let scrollable_range = max_scroll_offset(params.total_items, params.viewport_size);
+    let track_length = usize::from(height.saturating_sub(2));
+    // Leave room for the thumb to move even when rounding would fill the track.
+    let viewport_length = if track_length >= 2 {
+        usize::from(height).min(
+            (2 * track_length - 1)
+                .saturating_mul(scrollable_range)
+                .saturating_sub(1),
+        )
+    } else {
+        usize::from(height)
+    };
     let mut scrollbar_state = ScrollbarState::default()
-        .content_length(scrollable_range)
-        .viewport_content_length(0) // Use default (track size)
+        .content_length(scrollable_range.saturating_add(1))
+        .viewport_content_length(viewport_length)
         .position(params.position);
 
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
@@ -178,7 +189,7 @@ pub(crate) fn clamp_scroll_offset(
     viewport_size: usize,
     total_items: usize,
 ) -> usize {
-    scroll_offset.min(total_items.saturating_sub(viewport_size))
+    scroll_offset.min(max_scroll_offset(total_items, viewport_size))
 }
 
 #[cfg(test)]

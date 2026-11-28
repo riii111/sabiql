@@ -3,6 +3,10 @@ use std::borrow::Cow;
 pub const MIN_COL_WIDTH: u16 = 4;
 pub const MAX_COL_WIDTH: u16 = 200;
 
+pub fn max_scroll_offset(total_items: usize, viewport_size: usize) -> usize {
+    total_items.saturating_sub(viewport_size)
+}
+
 // An over-wide column may claim at most this share of the pane while
 // scrolling. Without the cap it monopolizes the viewport: scrolling past it
 // reveals nothing new until max_offset, where the right-edge logic dumps
