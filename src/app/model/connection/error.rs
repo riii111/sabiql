@@ -188,6 +188,8 @@ mod tests {
 
     mod error_info {
         use super::*;
+        use crate::domain::{classify_sqlite_metadata_error, classify_sqlite_read_error};
+        use std::io::{self, ErrorKind};
 
         #[rstest]
         #[case(
@@ -420,11 +422,17 @@ mod tests {
             ),
             "Cannot read SQLite database file"
         )]
-        #[case(
-            SqlitePathError::PathAccessDenied(
-                "/tmp/app.db: permission denied".to_string(),
+        #[case::metadata_permission(
+            classify_sqlite_metadata_error(
+                "/tmp/app.db",
+                ErrorKind::PermissionDenied,
+                "permission denied",
             ),
             "Cannot access SQLite database file"
+        )]
+        #[case::missing_at_open(
+            classify_sqlite_read_error("/tmp/app.db", ErrorKind::NotFound, "file disappeared"),
+            "SQLite database file not found"
         )]
         #[case(
             SqlitePathError::Io("/tmp/app.db: device offline".to_string()),
@@ -438,6 +446,22 @@ mod tests {
                 ConnectionErrorInfo::from_db_operation_error(&DbOperationError::SqlitePath(error));
 
             assert_eq!(info.summary(), expected_summary);
+        }
+
+        #[rstest]
+        #[case::metadata(classify_sqlite_metadata_error)]
+        #[case::read(classify_sqlite_read_error)]
+        fn sqlite_path_error_details_preserve_the_os_cause(
+            #[case] classify: fn(&str, ErrorKind, &str) -> SqlitePathError,
+        ) {
+            let path = "/tmp/app.db";
+            let cause = io::Error::from(ErrorKind::NotADirectory).to_string();
+
+            let error = classify(path, ErrorKind::NotADirectory, &cause);
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::SqlitePath(error));
+
+            assert!(info.masked_details().contains(&format!("{path}: {cause}")));
         }
 
         #[test]
