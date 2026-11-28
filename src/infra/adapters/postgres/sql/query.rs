@@ -371,11 +371,16 @@ impl PostgresAdapter {
         let values = tables
             .iter()
             .map(|(schema, table)| {
-                format!(
-                    "({}, {})",
-                    Postgres.quote_text(schema),
-                    Postgres.quote_text(table)
-                )
+                // Hex encoding keeps every identifier on one line and excludes psql metacommands.
+                let literal = |value: &str| {
+                    use std::fmt::Write as _;
+                    let mut hex = String::with_capacity(value.len() * 2);
+                    for byte in value.as_bytes() {
+                        write!(&mut hex, "{byte:02x}").expect("writing to a string cannot fail");
+                    }
+                    format!("convert_from(decode('{hex}', 'hex'), 'UTF8')")
+                };
+                format!("({}, {})", literal(schema), literal(table))
             })
             .collect::<Vec<_>>()
             .join(", ");
@@ -628,8 +633,9 @@ mod tests {
                 ("public".into(), "users".into()),
                 ("odd'schema".into(), "order's".into()),
             ]);
-            assert!(sql.contains("('public', 'users')"));
-            assert!(sql.contains("('odd''schema', 'order''s')"));
+            assert!(sql.contains("decode('7075626c6963', 'hex')"));
+            assert!(sql.contains("decode('6f646427736368656d61', 'hex')"));
+            assert!(!sql.contains("odd'schema"));
             assert!(sql.contains("FROM requested r"));
             assert!(sql.contains("n.nspname = r.schema_name"));
             assert!(sql.contains("c1.relname = r.table_name"));

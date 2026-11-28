@@ -225,25 +225,6 @@ fn snapshot_from_details(details: Vec<Table>) -> TableSignatureSnapshot {
     TableSignatureSnapshot { signatures }
 }
 
-#[cfg(test)]
-fn table_signatures_from_metadata(
-    tables: &[MySqlTableMetadata],
-    database: &str,
-    lower_case_table_names: u8,
-    columns: Vec<MySqlSignatureColumnMetadata>,
-    foreign_keys: Vec<MySqlForeignKeyMetadata>,
-    unique_columns_by_table: HashMap<String, HashSet<String>>,
-) -> Result<TableSignatureSnapshot, DbOperationError> {
-    Ok(snapshot_from_details(table_details_from_metadata(
-        tables,
-        database,
-        lower_case_table_names,
-        columns,
-        foreign_keys,
-        unique_columns_by_table,
-    )?))
-}
-
 fn table_signature(table: &Table) -> String {
     let mut signature = String::new();
     append_record(&mut signature, "table");
@@ -397,6 +378,24 @@ mod tests {
     use super::super::test_support::result;
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ForeignKey, QueryValue, TableStorageAttributes};
+
+    fn table_signatures_from_metadata(
+        tables: &[MySqlTableMetadata],
+        database: &str,
+        lower_case_table_names: u8,
+        columns: Vec<MySqlSignatureColumnMetadata>,
+        foreign_keys: Vec<MySqlForeignKeyMetadata>,
+        unique_columns_by_table: HashMap<String, HashSet<String>>,
+    ) -> Result<TableSignatureSnapshot, DbOperationError> {
+        Ok(snapshot_from_details(table_details_from_metadata(
+            tables,
+            database,
+            lower_case_table_names,
+            columns,
+            foreign_keys,
+            unique_columns_by_table,
+        )?))
+    }
 
     fn signature_table() -> Table {
         Table {

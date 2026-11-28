@@ -113,7 +113,7 @@ impl PostgresAdapter {
         }
         let query = Self::batch_table_columns_and_fks_query(tables);
         let json = self
-            .execute_raw_output(&postgres_conninfo(endpoint), &query)
+            .execute_batch_metadata_sql(&postgres_conninfo(endpoint), &query)
             .await?;
         #[derive(serde::Deserialize)]
         struct Row {
@@ -229,18 +229,21 @@ mod tests {
         let adapter = PostgresAdapter::new();
         let dsn = postgres_test_dsn();
         let schema = unique_schema_name();
+        let unusual_name = "odd\n\\! not_a_command";
         adapter.execute_adhoc(&dsn, &format!(
-            "CREATE SCHEMA \"{schema}\"; CREATE TABLE \"{schema}\".parent (id integer PRIMARY KEY); CREATE TABLE \"{schema}\".child (id integer, parent_id integer REFERENCES \"{schema}\".parent(id));"
+            "CREATE SCHEMA \"{schema}\"; CREATE TABLE \"{schema}\".parent (id integer PRIMARY KEY); CREATE TABLE \"{schema}\".child (id integer, parent_id integer REFERENCES \"{schema}\".parent(id)); CREATE TABLE \"{schema}\".\"{unusual_name}\" (id integer); DO $$ BEGIN FOR n IN 1..1800 LOOP EXECUTE format('CREATE TABLE %I.%I (id integer)', '{schema}', 'bulk_' || lpad(n::text, 5, '0') || repeat('x', 40)); END LOOP; END $$;"
         ), AccessMode::ReadWrite).await.unwrap();
+        let mut tables = vec![
+            (schema.clone(), "parent".into()),
+            (schema.clone(), "child".into()),
+            (schema.clone(), "missing".into()),
+            (schema.clone(), unusual_name.into()),
+        ];
+        tables
+            .extend((1..=1800).map(|n| (schema.clone(), format!("bulk_{n:05}{}", "x".repeat(40)))));
+        assert!(PostgresAdapter::batch_table_columns_and_fks_query(&tables).len() > 131_072);
         let result = adapter
-            .fetch_table_columns_and_fks_batch(
-                &dsn,
-                &[
-                    (schema.clone(), "parent".into()),
-                    (schema.clone(), "child".into()),
-                    (schema.clone(), "missing".into()),
-                ],
-            )
+            .fetch_table_columns_and_fks_batch(&dsn, &tables)
             .await;
         adapter
             .execute_adhoc(
@@ -251,7 +254,8 @@ mod tests {
             .await
             .unwrap();
         let details = result.unwrap();
-        assert_eq!(details.len(), 2);
+        assert_eq!(details.len(), 1803);
+        assert!(details.iter().any(|table| table.name == unusual_name));
         let parent = details.iter().find(|table| table.name == "parent").unwrap();
         assert_eq!(
             parent.primary_key.as_deref(),
