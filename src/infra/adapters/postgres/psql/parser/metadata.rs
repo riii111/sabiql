@@ -30,57 +30,187 @@ impl From<MetadataParseError> for DbOperationError {
     }
 }
 
-fn non_empty_json(raw: &str) -> Option<&str> {
+fn detail_json<'a>(raw: &'a str, operation: &str) -> Result<&'a str, DbOperationError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "null" {
-        None
-    } else {
-        Some(trimmed)
+        return Err(DbOperationError::EmptyResponse(operation.to_string()));
     }
+    Ok(trimmed)
 }
 
+#[derive(Default, serde::Deserialize)]
 pub(in crate::adapters::postgres) struct TableInfo {
     pub owner: Option<String>,
     pub comment: Option<String>,
     pub row_count_estimate: Option<i64>,
 }
 
-impl PostgresAdapter {
-    fn parse_table_info(json: &str) -> Result<TableInfo, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(TableInfo {
-                owner: None,
-                comment: None,
-                row_count_estimate: None,
-            });
-        };
+#[derive(serde::Deserialize)]
+struct RawColumn {
+    name: String,
+    data_type: String,
+    nullable: bool,
+    default: Option<String>,
+    is_primary_key: bool,
+    is_unique: bool,
+    comment: Option<String>,
+    ordinal_position: i32,
+}
 
-        #[derive(serde::Deserialize)]
-        struct RawTableInfo {
-            owner: Option<String>,
-            comment: Option<String>,
-            row_count_estimate: Option<i64>,
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "PostgreSQL index flags are independent catalog fields"
+)]
+#[derive(serde::Deserialize)]
+struct RawIndex {
+    name: String,
+    columns: Vec<String>,
+    is_unique: bool,
+    is_primary: bool,
+    is_partial: bool,
+    has_expression: bool,
+    index_type: String,
+    definition: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct RawForeignKey {
+    name: String,
+    from_schema: String,
+    from_table: String,
+    from_columns: Vec<String>,
+    to_schema: String,
+    to_table: String,
+    to_columns: Vec<String>,
+    on_delete: String,
+    on_update: String,
+}
+
+#[derive(serde::Deserialize)]
+struct RawRls {
+    enabled: bool,
+    force: bool,
+    policies: Vec<RawPolicy>,
+}
+
+#[derive(serde::Deserialize)]
+struct RawPolicy {
+    name: String,
+    permissive: bool,
+    roles: Vec<String>,
+    cmd: String,
+    qual: Option<String>,
+    with_check: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct RawTrigger {
+    name: String,
+    definition: String,
+}
+
+impl From<RawColumn> for Column {
+    fn from(c: RawColumn) -> Self {
+        Column {
+            name: c.name,
+            data_type: c.data_type,
+            default: c.default,
+            attributes: ColumnAttributes::from_parts(c.nullable, c.is_primary_key, c.is_unique),
+            comment: c.comment,
+            ordinal_position: c.ordinal_position,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
+        }
+    }
+}
+
+impl From<RawIndex> for Index {
+    fn from(i: RawIndex) -> Self {
+        let mut attributes = IndexAttributes::from_parts(i.is_unique, i.is_primary);
+        if i.is_partial {
+            attributes = attributes | IndexAttributes::PARTIAL;
+        }
+        if i.has_expression {
+            attributes = attributes | IndexAttributes::EXPRESSION;
         }
 
-        let raw: RawTableInfo = serde_json::from_str(trimmed)?;
+        Index {
+            name: i.name,
+            columns: i.columns,
+            attributes,
+            index_type: match i.index_type.parse::<IndexType>() {
+                Ok(index_type) => index_type,
+                Err(never) => match never {},
+            },
+            definition: i.definition,
+        }
+    }
+}
 
-        // PostgreSQL returns reltuples = -1 when VACUUM/ANALYZE has never run
-        let row_count = raw.row_count_estimate.filter(|&n| n >= 0);
+impl TryFrom<RawForeignKey> for ForeignKey {
+    type Error = MetadataParseError;
 
-        Ok(TableInfo {
-            owner: raw.owner,
-            comment: raw.comment,
-            row_count_estimate: row_count,
+    fn try_from(fk: RawForeignKey) -> Result<Self, Self::Error> {
+        let on_delete = fk
+            .on_delete
+            .parse::<FkAction>()
+            .map_err(|error| MetadataParseError::ForeignKeyAction(error.to_string()))?;
+        let on_update = fk
+            .on_update
+            .parse::<FkAction>()
+            .map_err(|error| MetadataParseError::ForeignKeyAction(error.to_string()))?;
+        Ok(ForeignKey {
+            name: fk.name,
+            from_schema: fk.from_schema,
+            from_table: fk.from_table,
+            from_columns: fk.from_columns,
+            to_schema: fk.to_schema,
+            to_table: fk.to_table,
+            to_columns: fk.to_columns,
+            on_delete,
+            on_update,
+            reference_resolved: true,
         })
     }
+}
 
+impl TryFrom<RawRls> for RlsInfo {
+    type Error = MetadataParseError;
+
+    fn try_from(raw: RawRls) -> Result<Self, Self::Error> {
+        let policies = raw
+            .policies
+            .into_iter()
+            .map(|p| {
+                let cmd = p
+                    .cmd
+                    .parse::<RlsCommand>()
+                    .map_err(|error| MetadataParseError::RlsCommand(error.to_string()))?;
+                Ok(RlsPolicy {
+                    name: p.name,
+                    permissive: p.permissive,
+                    roles: p.roles,
+                    cmd,
+                    qual: p.qual,
+                    with_check: p.with_check,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(RlsInfo {
+            enabled: raw.enabled,
+            force: raw.force,
+            policies,
+        })
+    }
+}
+
+impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn parse_tables(
         json: &str,
     ) -> Result<Vec<TableSummary>, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(Vec::new());
-        };
-
         #[derive(serde::Deserialize)]
         struct RawTable {
             schema: String,
@@ -88,7 +218,7 @@ impl PostgresAdapter {
             row_count_estimate: Option<i64>,
         }
 
-        let raw: Vec<RawTable> = serde_json::from_str(trimmed)?;
+        let raw: Vec<RawTable> = serde_json::from_str(json)?;
 
         Ok(raw
             .into_iter()
@@ -99,10 +229,6 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn parse_table_signatures(
         json: &str,
     ) -> Result<Vec<TableSignature>, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(Vec::new());
-        };
-
         #[derive(serde::Deserialize)]
         struct RawTableSignature {
             schema: String,
@@ -110,7 +236,7 @@ impl PostgresAdapter {
             signature: String,
         }
 
-        let raw: Vec<RawTableSignature> = serde_json::from_str(trimmed)?;
+        let raw: Vec<RawTableSignature> = serde_json::from_str(json)?;
 
         Ok(raw
             .into_iter()
@@ -125,260 +251,57 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn parse_schemas(
         json: &str,
     ) -> Result<Vec<Schema>, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(Vec::new());
-        };
-
         #[derive(serde::Deserialize)]
         struct RawSchema {
             name: String,
         }
 
-        let raw: Vec<RawSchema> = serde_json::from_str(trimmed)?;
+        let raw: Vec<RawSchema> = serde_json::from_str(json)?;
 
         Ok(raw.into_iter().map(|s| Schema::new(s.name)).collect())
-    }
-
-    fn parse_columns(json: &str) -> Result<Vec<Column>, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(Vec::new());
-        };
-
-        #[derive(serde::Deserialize)]
-        struct RawColumn {
-            name: String,
-            data_type: String,
-            nullable: bool,
-            default: Option<String>,
-            is_primary_key: bool,
-            is_unique: bool,
-            comment: Option<String>,
-            ordinal_position: i32,
-        }
-
-        let raw: Vec<RawColumn> = serde_json::from_str(trimmed)?;
-
-        Ok(raw
-            .into_iter()
-            .map(|c| Column {
-                name: c.name,
-                data_type: c.data_type,
-                default: c.default,
-                attributes: ColumnAttributes::from_parts(c.nullable, c.is_primary_key, c.is_unique),
-                comment: c.comment,
-                ordinal_position: c.ordinal_position,
-                character_set_name: None,
-                collation_name: None,
-                generation_expression: None,
-                generation_kind: None,
-            })
-            .collect())
-    }
-
-    fn parse_indexes(json: &str) -> Result<Vec<Index>, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(Vec::new());
-        };
-
-        #[expect(
-            clippy::struct_excessive_bools,
-            reason = "PostgreSQL index flags are independent catalog fields"
-        )]
-        #[derive(serde::Deserialize)]
-        struct RawIndex {
-            name: String,
-            columns: Vec<String>,
-            is_unique: bool,
-            is_primary: bool,
-            is_partial: bool,
-            has_expression: bool,
-            index_type: String,
-            definition: Option<String>,
-        }
-
-        let raw: Vec<RawIndex> = serde_json::from_str(trimmed)?;
-
-        Ok(raw
-            .into_iter()
-            .map(|i| {
-                let mut attributes = IndexAttributes::from_parts(i.is_unique, i.is_primary);
-                if i.is_partial {
-                    attributes = attributes | IndexAttributes::PARTIAL;
-                }
-                if i.has_expression {
-                    attributes = attributes | IndexAttributes::EXPRESSION;
-                }
-
-                Index {
-                    name: i.name,
-                    columns: i.columns,
-                    attributes,
-                    index_type: match i.index_type.parse::<IndexType>() {
-                        Ok(index_type) => index_type,
-                        Err(never) => match never {},
-                    },
-                    definition: i.definition,
-                }
-            })
-            .collect())
-    }
-
-    fn parse_foreign_keys(json: &str) -> Result<Vec<ForeignKey>, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(Vec::new());
-        };
-
-        #[derive(serde::Deserialize)]
-        struct RawForeignKey {
-            name: String,
-            from_schema: String,
-            from_table: String,
-            from_columns: Vec<String>,
-            to_schema: String,
-            to_table: String,
-            to_columns: Vec<String>,
-            on_delete: String,
-            on_update: String,
-        }
-
-        let raw: Vec<RawForeignKey> = serde_json::from_str(trimmed)?;
-
-        raw.into_iter()
-            .map(|fk| {
-                let on_delete = fk
-                    .on_delete
-                    .parse::<FkAction>()
-                    .map_err(|error| MetadataParseError::ForeignKeyAction(error.to_string()))?;
-                let on_update = fk
-                    .on_update
-                    .parse::<FkAction>()
-                    .map_err(|error| MetadataParseError::ForeignKeyAction(error.to_string()))?;
-                Ok(ForeignKey {
-                    name: fk.name,
-                    from_schema: fk.from_schema,
-                    from_table: fk.from_table,
-                    from_columns: fk.from_columns,
-                    to_schema: fk.to_schema,
-                    to_table: fk.to_table,
-                    to_columns: fk.to_columns,
-                    on_delete,
-                    on_update,
-                    reference_resolved: true,
-                })
-            })
-            .collect::<Result<Vec<_>, MetadataParseError>>()
-            .map_err(DbOperationError::from)
-    }
-
-    fn parse_rls(json: &str) -> Result<Option<RlsInfo>, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(None);
-        };
-
-        #[derive(serde::Deserialize)]
-        struct RawRls {
-            enabled: bool,
-            force: bool,
-            policies: Vec<RawPolicy>,
-        }
-
-        #[derive(serde::Deserialize)]
-        struct RawPolicy {
-            name: String,
-            permissive: bool,
-            roles: Option<Vec<String>>,
-            cmd: String,
-            qual: Option<String>,
-            with_check: Option<String>,
-        }
-
-        let raw: RawRls = serde_json::from_str(trimmed)?;
-
-        let policies = raw
-            .policies
-            .into_iter()
-            .map(|p| {
-                let cmd = p
-                    .cmd
-                    .parse::<RlsCommand>()
-                    .map_err(|error| MetadataParseError::RlsCommand(error.to_string()))?;
-                Ok(RlsPolicy {
-                    name: p.name,
-                    permissive: p.permissive,
-                    roles: p.roles.unwrap_or_default(),
-                    cmd,
-                    qual: p.qual,
-                    with_check: p.with_check,
-                })
-            })
-            .collect::<Result<Vec<_>, MetadataParseError>>()
-            .map_err(DbOperationError::from)?;
-
-        Ok(Some(RlsInfo {
-            enabled: raw.enabled,
-            force: raw.force,
-            policies,
-        }))
-    }
-
-    fn parse_triggers(json: &str) -> Result<Vec<Trigger>, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Ok(Vec::new());
-        };
-
-        #[derive(serde::Deserialize)]
-        struct RawTrigger {
-            name: String,
-            definition: String,
-        }
-
-        let raw: Vec<RawTrigger> = serde_json::from_str(trimmed)?;
-        Ok(raw
-            .into_iter()
-            .map(|trigger| Trigger {
-                name: trigger.name,
-                definition: trigger.definition,
-            })
-            .collect())
     }
 
     pub(in crate::adapters::postgres) fn parse_table_detail_combined(
         json: &str,
     ) -> Result<TableDetailCombined, DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Err(DbOperationError::EmptyResponse(
-                "table_detail_combined".to_string(),
-            ));
-        };
-
         #[derive(serde::Deserialize)]
         #[serde(deny_unknown_fields)]
         struct CombinedDetail {
             exists: bool,
-            columns: serde_json::Value,
-            indexes: serde_json::Value,
-            foreign_keys: serde_json::Value,
-            rls: serde_json::Value,
-            triggers: serde_json::Value,
-            table_info: serde_json::Value,
+            columns: Vec<RawColumn>,
+            indexes: Vec<RawIndex>,
+            foreign_keys: Vec<RawForeignKey>,
+            #[serde(deserialize_with = "serde::Deserialize::deserialize")]
+            rls: Option<RawRls>,
+            triggers: Vec<RawTrigger>,
+            #[serde(deserialize_with = "serde::Deserialize::deserialize")]
+            table_info: Option<TableInfo>,
         }
 
-        let combined: CombinedDetail = serde_json::from_str(trimmed)?;
-
-        let columns = Self::parse_columns(&combined.columns.to_string())?;
-        let indexes = Self::parse_indexes(&combined.indexes.to_string())?;
-        let foreign_keys = Self::parse_foreign_keys(&combined.foreign_keys.to_string())?;
-        let rls = Self::parse_rls(&combined.rls.to_string())?;
-        let triggers = Self::parse_triggers(&combined.triggers.to_string())?;
-        let table_info = Self::parse_table_info(&combined.table_info.to_string())?;
+        let detail: CombinedDetail =
+            serde_json::from_str(detail_json(json, "table_detail_combined")?)?;
+        let mut table_info = detail.table_info.unwrap_or_default();
+        // PostgreSQL returns reltuples = -1 when VACUUM/ANALYZE has never run.
+        table_info.row_count_estimate = table_info.row_count_estimate.filter(|&n| n >= 0);
 
         Ok((
-            combined.exists,
-            columns,
-            indexes,
-            foreign_keys,
-            rls,
-            triggers,
+            detail.exists,
+            detail.columns.into_iter().map(Column::from).collect(),
+            detail.indexes.into_iter().map(Index::from).collect(),
+            detail
+                .foreign_keys
+                .into_iter()
+                .map(ForeignKey::try_from)
+                .collect::<Result<_, _>>()?,
+            detail.rls.map(RlsInfo::try_from).transpose()?,
+            detail
+                .triggers
+                .into_iter()
+                .map(|trigger| Trigger {
+                    name: trigger.name,
+                    definition: trigger.definition,
+                })
+                .collect(),
             table_info,
         ))
     }
@@ -386,26 +309,26 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn parse_table_columns_and_fks(
         json: &str,
     ) -> Result<(bool, Vec<Column>, Vec<ForeignKey>), DbOperationError> {
-        let Some(trimmed) = non_empty_json(json) else {
-            return Err(DbOperationError::EmptyResponse(
-                "table_columns_and_fks".to_string(),
-            ));
-        };
-
         #[derive(serde::Deserialize)]
         #[serde(deny_unknown_fields)]
         struct LightDetail {
             exists: bool,
-            columns: serde_json::Value,
-            foreign_keys: serde_json::Value,
+            columns: Vec<RawColumn>,
+            foreign_keys: Vec<RawForeignKey>,
         }
 
-        let light: LightDetail = serde_json::from_str(trimmed)?;
+        let detail: LightDetail =
+            serde_json::from_str(detail_json(json, "table_columns_and_fks")?)?;
 
-        let columns = Self::parse_columns(&light.columns.to_string())?;
-        let foreign_keys = Self::parse_foreign_keys(&light.foreign_keys.to_string())?;
-
-        Ok((light.exists, columns, foreign_keys))
+        Ok((
+            detail.exists,
+            detail.columns.into_iter().map(Column::from).collect(),
+            detail
+                .foreign_keys
+                .into_iter()
+                .map(ForeignKey::try_from)
+                .collect::<Result<_, _>>()?,
+        ))
     }
 }
 
@@ -416,16 +339,6 @@ mod tests {
 
     mod table_signature_parsing {
         use super::*;
-        use rstest::rstest;
-
-        #[rstest]
-        #[case("")]
-        #[case("null")]
-        #[case("   ")]
-        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
-            let result = PostgresAdapter::parse_table_signatures(input).unwrap();
-            assert!(result.is_empty());
-        }
 
         #[test]
         fn valid_single_signature_parses_all_fields() {
@@ -472,409 +385,8 @@ mod tests {
         }
     }
 
-    mod rls_parsing {
-        use super::*;
-        use crate::domain::RlsCommand;
-        use rstest::rstest;
-
-        #[rstest]
-        #[case("")]
-        #[case("null")]
-        #[case("   ")]
-        fn empty_or_null_input_returns_none(#[case] input: &str) {
-            let result = PostgresAdapter::parse_rls(input).unwrap();
-            assert!(result.is_none());
-        }
-
-        #[test]
-        fn malformed_json_returns_invalid_json_error() {
-            let result = PostgresAdapter::parse_rls("{not valid json}");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn disabled_rls_without_policies_is_empty() {
-            let json = r#"{"enabled": false, "force": false, "policies": []}"#;
-
-            let result = PostgresAdapter::parse_rls(json).unwrap();
-            let rls = result.expect("Should return Some(RlsInfo)");
-
-            assert!(!rls.enabled);
-            assert!(!rls.force);
-            assert!(rls.policies.is_empty());
-        }
-
-        #[test]
-        fn enabled_and_forced_rls_preserves_flags() {
-            let json = r#"{"enabled": true, "force": true, "policies": []}"#;
-
-            let result = PostgresAdapter::parse_rls(json).unwrap();
-            let rls = result.unwrap();
-
-            assert!(rls.enabled);
-            assert!(rls.force);
-        }
-
-        #[test]
-        fn single_policy_parses_all_fields() {
-            let json = r#"{
-                "enabled": true,
-                "force": false,
-                "policies": [{
-                    "name": "tenant_isolation",
-                    "permissive": true,
-                    "roles": ["app_user", "admin"],
-                    "cmd": "r",
-                    "qual": "tenant_id = current_setting('app.tenant_id')::int",
-                    "with_check": null
-                }]
-            }"#;
-
-            let result = PostgresAdapter::parse_rls(json).unwrap();
-            let rls = result.unwrap();
-            let policy = &rls.policies[0];
-
-            assert_eq!(policy.name, "tenant_isolation");
-            assert!(policy.permissive);
-            assert_eq!(policy.roles, vec!["app_user", "admin"]);
-            assert_eq!(policy.cmd, RlsCommand::Select);
-            assert!(policy.qual.is_some());
-            assert!(policy.with_check.is_none());
-        }
-
-        #[rstest]
-        #[case("*", RlsCommand::All)]
-        #[case("r", RlsCommand::Select)]
-        #[case("a", RlsCommand::Insert)]
-        #[case("w", RlsCommand::Update)]
-        #[case("d", RlsCommand::Delete)]
-        fn cmd_code_maps_to_rls_command(#[case] cmd: &str, #[case] expected: RlsCommand) {
-            let json = format!(
-                r#"{{"enabled": true, "force": false, "policies": [{{
-                    "name": "test", "permissive": true, "roles": null,
-                    "cmd": "{cmd}", "qual": null, "with_check": null
-                }}]}}"#
-            );
-
-            let result = PostgresAdapter::parse_rls(&json).unwrap();
-            let rls = result.unwrap();
-
-            assert_eq!(rls.policies[0].cmd, expected);
-        }
-
-        #[test]
-        fn unknown_command_returns_metadata_parse_error() {
-            let json = r#"{
-                "enabled": true,
-                "force": false,
-                "policies": [{
-                    "name": "test",
-                    "permissive": true,
-                    "roles": null,
-                    "cmd": "x",
-                    "qual": null,
-                    "with_check": null
-                }]
-            }"#;
-
-            let result = PostgresAdapter::parse_rls(json);
-
-            assert!(matches!(
-                result,
-                Err(DbOperationError::MetadataParseFailed(_))
-            ));
-        }
-
-        #[test]
-        fn null_roles_becomes_empty_vec() {
-            let json = r#"{
-                "enabled": true, "force": false,
-                "policies": [{"name": "p", "permissive": true, "roles": null, "cmd": "*", "qual": null, "with_check": null}]
-            }"#;
-
-            let result = PostgresAdapter::parse_rls(json).unwrap();
-            let rls = result.unwrap();
-
-            assert!(rls.policies[0].roles.is_empty());
-        }
-
-        #[test]
-        fn missing_required_field_returns_invalid_json_error() {
-            let json = r#"{"force": false, "policies": []}"#; // missing 'enabled'
-
-            let result = PostgresAdapter::parse_rls(json);
-
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-    }
-
-    mod json_parse_errors {
-        use super::*;
-        use crate::domain::IndexType;
-        use rstest::rstest;
-
-        #[test]
-        fn parse_tables_with_malformed_json_returns_error() {
-            let result = PostgresAdapter::parse_tables("{not valid json}");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn parse_tables_with_wrong_structure_returns_error() {
-            let result = PostgresAdapter::parse_tables(r#"["table1", "table2"]"#);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn parse_columns_with_missing_field_returns_error() {
-            let json = r#"[{"name": "id", "nullable": true}]"#;
-            let result = PostgresAdapter::parse_columns(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn parse_indexes_with_wrong_type_returns_error() {
-            let json =
-                r#"[{"name": "idx_test", "columns": "id", "unique": false, "primary": false}]"#;
-            let result = PostgresAdapter::parse_indexes(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn parse_indexes_with_unknown_access_method_preserves_other() {
-            let json = r#"[{
-                "name": "idx_custom",
-                "columns": ["id"],
-                "is_unique": false,
-                "is_primary": false,
-                "is_partial": false,
-                "has_expression": false,
-                "index_type": "ivfflat",
-                "definition": null
-            }]"#;
-
-            let result = PostgresAdapter::parse_indexes(json).unwrap();
-
-            assert_eq!(
-                result[0].index_type,
-                IndexType::Other("ivfflat".to_string())
-            );
-        }
-
-        #[test]
-        fn parse_indexes_preserves_key_order_and_metadata_attributes() {
-            let json = r#"[
-                {
-                    "name": "users_pkey",
-                    "columns": ["id"],
-                    "is_unique": true,
-                    "is_primary": true,
-                    "is_partial": false,
-                    "has_expression": false,
-                    "index_type": "btree",
-                    "definition": "CREATE UNIQUE INDEX users_pkey ON users USING btree (id)"
-                },
-                {
-                    "name": "users_tenant_email_idx",
-                    "columns": ["tenant_id", "email"],
-                    "is_unique": false,
-                    "is_primary": false,
-                    "is_partial": false,
-                    "has_expression": false,
-                    "index_type": "btree",
-                    "definition": "CREATE INDEX users_tenant_email_idx ON users USING btree (tenant_id, email)"
-                },
-                {
-                    "name": "users_lower_email_idx",
-                    "columns": ["lower(email)"],
-                    "is_unique": false,
-                    "is_primary": false,
-                    "is_partial": false,
-                    "has_expression": true,
-                    "index_type": "btree",
-                    "definition": "CREATE INDEX users_lower_email_idx ON users USING btree (lower(email))"
-                },
-                {
-                    "name": "users_active_email_idx",
-                    "columns": ["email"],
-                    "is_unique": false,
-                    "is_primary": false,
-                    "is_partial": true,
-                    "has_expression": false,
-                    "index_type": "btree",
-                    "definition": "CREATE INDEX users_active_email_idx ON users USING btree (email) WHERE active"
-                },
-                {
-                    "name": "users_active_email_key",
-                    "columns": ["email"],
-                    "is_unique": true,
-                    "is_primary": false,
-                    "is_partial": true,
-                    "has_expression": false,
-                    "index_type": "btree",
-                    "definition": "CREATE UNIQUE INDEX users_active_email_key ON users USING btree (email) WHERE active"
-                },
-                {
-                    "name": "users_tenant_lower_email_idx",
-                    "columns": ["tenant_id", "lower(email)"],
-                    "is_unique": false,
-                    "is_primary": false,
-                    "is_partial": false,
-                    "has_expression": true,
-                    "index_type": "btree",
-                    "definition": "CREATE INDEX users_tenant_lower_email_idx ON users USING btree (tenant_id, lower(email))"
-                }
-            ]"#;
-
-            let indexes = PostgresAdapter::parse_indexes(json).unwrap();
-
-            assert_eq!(indexes[0].columns, ["id"]);
-            assert!(indexes[0].is_unique());
-            assert!(indexes[0].is_primary());
-
-            assert_eq!(indexes[1].columns, ["tenant_id", "email"]);
-            assert!(!indexes[1].has_expression());
-
-            assert_eq!(indexes[2].columns, ["lower(email)"]);
-            assert!(indexes[2].has_expression());
-            assert_eq!(
-                indexes[2].definition.as_deref(),
-                Some("CREATE INDEX users_lower_email_idx ON users USING btree (lower(email))")
-            );
-
-            assert!(indexes[3].is_partial());
-            assert!(!indexes[3].is_unique());
-
-            assert!(indexes[4].is_partial());
-            assert!(indexes[4].is_unique());
-
-            assert_eq!(indexes[5].columns, ["tenant_id", "lower(email)"]);
-            assert!(indexes[5].has_expression());
-        }
-
-        #[rstest]
-        #[case::empty_json("")]
-        #[case::null_json("null")]
-        fn empty_or_null_input_returns_empty_metadata_vecs(#[case] input: &str) {
-            assert!(PostgresAdapter::parse_tables(input).unwrap().is_empty());
-            assert!(PostgresAdapter::parse_columns(input).unwrap().is_empty());
-            assert!(PostgresAdapter::parse_indexes(input).unwrap().is_empty());
-        }
-    }
-
-    mod table_info_parsing {
-        use super::*;
-        use rstest::rstest;
-
-        #[rstest]
-        #[case("")]
-        #[case("null")]
-        #[case("   ")]
-        fn empty_or_null_input_returns_none(#[case] input: &str) {
-            let info = PostgresAdapter::parse_table_info(input).unwrap();
-            assert!(info.owner.is_none());
-            assert!(info.comment.is_none());
-            assert!(info.row_count_estimate.is_none());
-        }
-
-        #[test]
-        fn all_fields_present_returns_values() {
-            let json = r#"{"owner": "postgres", "comment": "User accounts table", "row_count_estimate": 100}"#;
-
-            let info = PostgresAdapter::parse_table_info(json).unwrap();
-
-            assert_eq!(info.owner.as_deref(), Some("postgres"));
-            assert_eq!(info.comment.as_deref(), Some("User accounts table"));
-            assert_eq!(info.row_count_estimate, Some(100));
-        }
-
-        #[test]
-        fn null_fields_returns_none() {
-            let json = r#"{"owner": null, "comment": null, "row_count_estimate": null}"#;
-
-            let info = PostgresAdapter::parse_table_info(json).unwrap();
-
-            assert!(info.owner.is_none());
-            assert!(info.comment.is_none());
-            assert!(info.row_count_estimate.is_none());
-        }
-
-        #[test]
-        fn negative_row_count_returns_none() {
-            let json = r#"{"owner": "postgres", "comment": null, "row_count_estimate": -1}"#;
-
-            let info = PostgresAdapter::parse_table_info(json).unwrap();
-
-            assert!(info.row_count_estimate.is_none());
-        }
-
-        #[test]
-        fn zero_row_count_returns_zero() {
-            let json = r#"{"owner": "postgres", "comment": null, "row_count_estimate": 0}"#;
-
-            let info = PostgresAdapter::parse_table_info(json).unwrap();
-
-            assert_eq!(info.row_count_estimate, Some(0));
-        }
-
-        #[test]
-        fn malformed_json_returns_invalid_json_error() {
-            let result = PostgresAdapter::parse_table_info("{not valid json}");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-    }
-
-    mod trigger_parsing {
-        use super::*;
-        use rstest::rstest;
-
-        #[rstest]
-        #[case("")]
-        #[case("null")]
-        #[case("   ")]
-        fn empty_or_null_input_returns_empty_trigger_vec(#[case] input: &str) {
-            let result = PostgresAdapter::parse_triggers(input).unwrap();
-            assert!(result.is_empty());
-        }
-
-        #[test]
-        fn preserves_full_trigger_definition() {
-            let definition = "CREATE TRIGGER audit_trigger AFTER UPDATE OF balance ON public.accounts FOR EACH ROW WHEN ((old.balance IS DISTINCT FROM new.balance)) EXECUTE FUNCTION audit_func()";
-            let json = serde_json::json!([{ "name": "audit_trigger", "definition": definition }]);
-
-            let result = PostgresAdapter::parse_triggers(&json.to_string()).unwrap();
-
-            assert_eq!(result.len(), 1);
-            assert_eq!(result[0].name, "audit_trigger");
-            assert_eq!(result[0].definition, definition);
-        }
-
-        #[test]
-        fn malformed_json_returns_invalid_json_error() {
-            let result = PostgresAdapter::parse_triggers("{not valid json}");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn empty_array_returns_empty_trigger_vec() {
-            let json = r"[]";
-            let result = PostgresAdapter::parse_triggers(json).unwrap();
-            assert!(result.is_empty());
-        }
-    }
-
     mod schema_parsing {
         use super::*;
-        use rstest::rstest;
-
-        #[rstest]
-        #[case("")]
-        #[case("null")]
-        #[case("   ")]
-        fn empty_or_null_input_returns_empty_schema_vec(#[case] input: &str) {
-            let result = PostgresAdapter::parse_schemas(input).unwrap();
-            assert!(result.is_empty());
-        }
 
         #[test]
         fn valid_multiple_schemas_parse_in_order() {
@@ -915,207 +427,9 @@ mod tests {
         }
     }
 
-    mod foreign_key_parsing {
-        use super::*;
-        use crate::domain::FkAction;
-        use rstest::rstest;
-
-        #[rstest]
-        #[case("")]
-        #[case("null")]
-        #[case("   ")]
-        fn empty_or_null_input_returns_empty_fk_vec(#[case] input: &str) {
-            let result = PostgresAdapter::parse_foreign_keys(input).unwrap();
-            assert!(result.is_empty());
-        }
-
-        #[test]
-        fn valid_single_fk_parses_all_fields() {
-            let json = r#"[{
-                "name": "orders_user_fk",
-                "from_schema": "public",
-                "from_table": "orders",
-                "from_columns": ["user_id"],
-                "to_schema": "public",
-                "to_table": "users",
-                "to_columns": ["id"],
-                "on_delete": "c",
-                "on_update": "a"
-            }]"#;
-
-            let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
-            let fk = &result[0];
-
-            assert_eq!(result.len(), 1);
-            assert_eq!(fk.name, "orders_user_fk");
-            assert_eq!(fk.from_schema, "public");
-            assert_eq!(fk.from_table, "orders");
-            assert_eq!(fk.from_columns, vec!["user_id"]);
-            assert_eq!(fk.to_schema, "public");
-            assert_eq!(fk.to_table, "users");
-            assert_eq!(fk.to_columns, vec!["id"]);
-            assert_eq!(fk.on_delete, FkAction::Cascade);
-            assert_eq!(fk.on_update, FkAction::NoAction);
-        }
-
-        #[rstest]
-        #[case("a", FkAction::NoAction)]
-        #[case("r", FkAction::Restrict)]
-        #[case("c", FkAction::Cascade)]
-        #[case("n", FkAction::SetNull)]
-        #[case("d", FkAction::SetDefault)]
-        fn fk_code_maps_to_fk_action(#[case] action_code: &str, #[case] expected: FkAction) {
-            let json = format!(
-                r#"[{{
-                    "name": "test_fk",
-                    "from_schema": "public",
-                    "from_table": "t1",
-                    "from_columns": ["id"],
-                    "to_schema": "public",
-                    "to_table": "t2",
-                    "to_columns": ["id"],
-                    "on_delete": "{action_code}",
-                    "on_update": "a"
-                }}]"#
-            );
-
-            let result = PostgresAdapter::parse_foreign_keys(&json).unwrap();
-            assert_eq!(result[0].on_delete, expected);
-        }
-
-        #[test]
-        fn unknown_action_returns_metadata_parse_error() {
-            let json = r#"[{
-                "name": "test_fk",
-                "from_schema": "public",
-                "from_table": "t1",
-                "from_columns": ["id"],
-                "to_schema": "public",
-                "to_table": "t2",
-                "to_columns": ["id"],
-                "on_delete": "x",
-                "on_update": "a"
-            }]"#;
-
-            let result = PostgresAdapter::parse_foreign_keys(json);
-
-            assert!(matches!(
-                result,
-                Err(DbOperationError::MetadataParseFailed(_))
-            ));
-        }
-
-        #[test]
-        fn composite_foreign_key_parses_multiple_columns() {
-            let json = r#"[{
-                "name": "order_item_fk",
-                "from_schema": "public",
-                "from_table": "order_items",
-                "from_columns": ["order_id", "item_id"],
-                "to_schema": "public",
-                "to_table": "order_item_master",
-                "to_columns": ["order_id", "id"],
-                "on_delete": "r",
-                "on_update": "r"
-            }]"#;
-
-            let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
-            let fk = &result[0];
-
-            assert_eq!(fk.from_columns, vec!["order_id", "item_id"]);
-            assert_eq!(fk.to_columns, vec!["order_id", "id"]);
-            assert_eq!(fk.on_delete, FkAction::Restrict);
-            assert_eq!(fk.on_update, FkAction::Restrict);
-        }
-
-        #[test]
-        fn multiple_foreign_keys_parse_in_order() {
-            let json = r#"[
-                {
-                    "name": "fk_1",
-                    "from_schema": "public",
-                    "from_table": "t1",
-                    "from_columns": ["id"],
-                    "to_schema": "public",
-                    "to_table": "t2",
-                    "to_columns": ["id"],
-                    "on_delete": "c",
-                    "on_update": "c"
-                },
-                {
-                    "name": "fk_2",
-                    "from_schema": "public",
-                    "from_table": "t3",
-                    "from_columns": ["id"],
-                    "to_schema": "public",
-                    "to_table": "t4",
-                    "to_columns": ["id"],
-                    "on_delete": "n",
-                    "on_update": "d"
-                }
-            ]"#;
-
-            let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
-
-            assert_eq!(result.len(), 2);
-            assert_eq!(result[0].name, "fk_1");
-            assert_eq!(result[0].on_delete, FkAction::Cascade);
-            assert_eq!(result[1].name, "fk_2");
-            assert_eq!(result[1].on_delete, FkAction::SetNull);
-            assert_eq!(result[1].on_update, FkAction::SetDefault);
-        }
-
-        #[test]
-        fn malformed_json_returns_invalid_json_error() {
-            let result = PostgresAdapter::parse_foreign_keys("{not valid json}");
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn missing_required_field_returns_error() {
-            let json = r#"[{
-                "name": "test_fk",
-                "from_schema": "public",
-                "from_table": "t1",
-                "from_columns": ["id"],
-                "to_schema": "public",
-                "to_table": "t2",
-                "to_columns": ["id"],
-                "on_update": "a"
-            }]"#;
-
-            let result = PostgresAdapter::parse_foreign_keys(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn wrong_column_type_returns_error() {
-            let json = r#"[{
-                "name": "test_fk",
-                "from_schema": "public",
-                "from_table": "t1",
-                "from_columns": "user_id",
-                "to_schema": "public",
-                "to_table": "t2",
-                "to_columns": ["id"],
-                "on_delete": "c",
-                "on_update": "a"
-            }]"#;
-
-            let result = PostgresAdapter::parse_foreign_keys(json);
-            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn empty_array_returns_empty_fk_vec() {
-            let json = r"[]";
-            let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
-            assert!(result.is_empty());
-        }
-    }
-
     mod table_detail_combined_parsing {
         use super::*;
+        use crate::domain::{IndexType, RlsCommand};
 
         fn build_combined_json(
             exists: bool,
@@ -1144,11 +458,11 @@ mod tests {
             let json = build_combined_json(
                 true,
                 r#"[{"name":"id","data_type":"integer","nullable":false,"default":null,"is_primary_key":true,"is_unique":false,"comment":null,"ordinal_position":1}]"#,
-                "null",
-                "null",
-                r#"{"enabled":false,"force":false,"policies":[]}"#,
-                "null",
-                r#"{"owner":"postgres","comment":null,"row_count_estimate":42}"#,
+                r#"[{"name":"users_idx","columns":["id","lower(email)"],"is_unique":true,"is_primary":false,"is_partial":true,"has_expression":true,"index_type":"ivfflat"}]"#,
+                r#"[{"name":"fk_1","from_schema":"public","from_table":"users","from_columns":["org_id"],"to_schema":"public","to_table":"orgs","to_columns":["id"],"on_delete":"c","on_update":"a"}]"#,
+                r#"{"enabled":true,"force":false,"policies":[{"name":"read_users","permissive":true,"roles":[],"cmd":"r","qual":"true"}]}"#,
+                r#"[{"name":"audit","definition":"CREATE TRIGGER audit AFTER INSERT ON users FOR EACH ROW EXECUTE FUNCTION audit()"}]"#,
+                r#"{"owner":"postgres","comment":null,"row_count_estimate":-1}"#,
             );
 
             let (exists, columns, indexes, fks, rls, triggers, table_info) =
@@ -1157,18 +471,36 @@ mod tests {
             assert!(exists);
             assert_eq!(columns.len(), 1);
             assert_eq!(columns[0].name, "id");
-            assert!(indexes.is_empty());
-            assert!(fks.is_empty());
-            assert!(rls.is_some());
-            assert!(!rls.unwrap().enabled);
-            assert!(triggers.is_empty());
+            assert!(columns[0].is_primary_key());
+            assert_eq!(indexes[0].columns, ["id", "lower(email)"]);
+            assert!(indexes[0].is_unique());
+            assert!(indexes[0].is_partial());
+            assert!(indexes[0].has_expression());
+            assert_eq!(
+                indexes[0].index_type,
+                IndexType::Other("ivfflat".to_string())
+            );
+            assert_eq!(fks[0].referenced_table(), "public.orgs");
+            let rls = rls.unwrap();
+            assert!(rls.enabled);
+            assert_eq!(rls.policies[0].cmd, RlsCommand::Select);
+            assert!(rls.policies[0].roles.is_empty());
+            assert!(triggers[0].definition.starts_with("CREATE TRIGGER audit"));
             assert_eq!(table_info.owner.as_deref(), Some("postgres"));
-            assert_eq!(table_info.row_count_estimate, Some(42));
+            assert_eq!(table_info.row_count_estimate, None);
         }
 
         #[test]
         fn existing_zero_column_table_keeps_empty_metadata_distinct_from_missing() {
-            let json = build_combined_json(true, "null", "null", "null", "null", "null", "null");
+            let json = build_combined_json(
+                true,
+                "[]",
+                "[]",
+                "[]",
+                r#"{"enabled":false,"force":false,"policies":[]}"#,
+                "[]",
+                r#"{"owner":"postgres","row_count_estimate":0}"#,
+            );
 
             let (exists, columns, indexes, fks, rls, triggers, table_info) =
                 PostgresAdapter::parse_table_detail_combined(&json).unwrap();
@@ -1177,14 +509,14 @@ mod tests {
             assert!(columns.is_empty());
             assert!(indexes.is_empty());
             assert!(fks.is_empty());
-            assert!(rls.is_none());
+            assert!(rls.unwrap().policies.is_empty());
             assert!(triggers.is_empty());
-            assert!(table_info.owner.is_none());
+            assert_eq!(table_info.row_count_estimate, Some(0));
         }
 
         #[test]
         fn missing_relation_preserves_false_existence_bit() {
-            let json = build_combined_json(false, "null", "null", "null", "null", "null", "null");
+            let json = build_combined_json(false, "[]", "[]", "[]", "null", "[]", "null");
 
             let (exists, columns, indexes, fks, rls, triggers, table_info) =
                 PostgresAdapter::parse_table_detail_combined(&json).unwrap();
@@ -1200,14 +532,14 @@ mod tests {
 
         #[test]
         fn missing_key_returns_invalid_json_error() {
-            let json = r#"{"columns": null, "indexes": null}"#;
+            let json = r#"{"exists": false, "columns": [], "indexes": [], "foreign_keys": [], "triggers": [], "table_info": null}"#;
             let result = PostgresAdapter::parse_table_detail_combined(json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn unknown_key_returns_invalid_json_error() {
-            let json = build_combined_json(true, "null", "null", "null", "null", "null", "null")
+            let json = build_combined_json(true, "[]", "[]", "[]", "null", "[]", "null")
                 .replace('}', r#","extra_key": null}"#);
             let result = PostgresAdapter::parse_table_detail_combined(&json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
@@ -1228,6 +560,7 @@ mod tests {
 
     mod table_columns_and_fks_parsing {
         use super::*;
+        use crate::domain::FkAction;
 
         fn build_light_json(exists: bool, columns: &str, fks: &str) -> String {
             format!(r#"{{"exists": {exists}, "columns": {columns}, "foreign_keys": {fks}}}"#)
@@ -1249,11 +582,13 @@ mod tests {
             assert_eq!(columns[0].name, "id");
             assert_eq!(fks.len(), 1);
             assert_eq!(fks[0].name, "fk_1");
+            assert_eq!(fks[0].on_delete, FkAction::Cascade);
+            assert_eq!(fks[0].on_update, FkAction::NoAction);
         }
 
         #[test]
-        fn null_sub_values_parse_to_empty() {
-            let json = build_light_json(true, "null", "null");
+        fn empty_arrays_parse_to_empty() {
+            let json = build_light_json(true, "[]", "[]");
 
             let (exists, columns, fks) =
                 PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
@@ -1265,7 +600,7 @@ mod tests {
 
         #[test]
         fn missing_relation_preserves_false_existence_bit() {
-            let json = build_light_json(false, "null", "null");
+            let json = build_light_json(false, "[]", "[]");
 
             let (exists, columns, fks) =
                 PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
@@ -1277,14 +612,14 @@ mod tests {
 
         #[test]
         fn missing_key_returns_error() {
-            let json = r#"{"exists": true, "columns": null}"#;
+            let json = r#"{"exists": true, "columns": []}"#;
             let result = PostgresAdapter::parse_table_columns_and_fks(json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn unknown_key_returns_error() {
-            let json = r#"{"exists": true, "columns": null, "foreign_keys": null, "extra": null}"#;
+            let json = r#"{"exists": true, "columns": [], "foreign_keys": [], "extra": null}"#;
             let result = PostgresAdapter::parse_table_columns_and_fks(json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
