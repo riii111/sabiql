@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::domain::connection::{
-    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, MySqlConnectionConfig,
-    MySqlSslMode, MySqlTransport, PostgresConnectionConfig, SqliteConnectionConfig,
-    SqliteConnectionConfigError, SqlitePathError, SslMode,
+    ConnectionConfig, ConnectionId, ConnectionName, ConnectionProfile, DatabaseType,
+    MySqlConnectionConfig, MySqlSslMode, MySqlTransport, PostgresConnectionConfig,
+    SqliteConnectionConfig, SqliteConnectionConfigError, SqlitePathError, SslMode,
 };
 use crate::model::shared::text_input::TextInputState;
 
@@ -75,7 +75,7 @@ impl ConnectionField {
 
     pub fn max_chars(self) -> Option<usize> {
         match self {
-            Self::Name => Some(50),
+            Self::Name => Some(ConnectionName::MAX_LENGTH),
             Self::SqlitePath
             | Self::TransportPath
             | Self::SslCa
@@ -126,19 +126,22 @@ impl ConnectionField {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct DropdownState {
-    is_open: bool,
-    selected_index: usize,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionDropdown {
+    DatabaseType,
+    Transport,
+    SslMode,
+    CleartextAuth,
 }
 
-impl DropdownState {
-    pub fn is_open(&self) -> bool {
-        self.is_open
-    }
-
-    pub fn selected_index(&self) -> usize {
-        self.selected_index
+impl ConnectionDropdown {
+    pub fn field(self) -> ConnectionField {
+        match self {
+            Self::DatabaseType => ConnectionField::DatabaseType,
+            Self::Transport => ConnectionField::Transport,
+            Self::SslMode => ConnectionField::SslMode,
+            Self::CleartextAuth => ConnectionField::CleartextAuth,
+        }
     }
 }
 
@@ -163,9 +166,7 @@ pub struct ConnectionSetupState {
     pub(crate) enable_cleartext_plugin: bool,
 
     pub(crate) focused_field: ConnectionField,
-    pub(crate) database_type_dropdown: DropdownState,
-    pub(crate) transport_dropdown: DropdownState,
-    pub(crate) ssl_dropdown: DropdownState,
+    open_dropdown: Option<(ConnectionDropdown, usize)>,
     pub(crate) validation_errors: HashMap<ConnectionField, String>,
 
     is_first_run: bool,
@@ -194,9 +195,7 @@ impl Default for ConnectionSetupState {
             mysql_transport: MySqlTransport::Tcp,
             enable_cleartext_plugin: false,
             focused_field: ConnectionField::DatabaseType,
-            database_type_dropdown: DropdownState::default(),
-            transport_dropdown: DropdownState::default(),
-            ssl_dropdown: DropdownState::default(),
+            open_dropdown: None,
             validation_errors: HashMap::new(),
             is_first_run: true,
             editing_id: None,
@@ -237,16 +236,8 @@ impl ConnectionSetupState {
         self.editing_id.as_ref()
     }
 
-    pub fn database_type_dropdown(&self) -> &DropdownState {
-        &self.database_type_dropdown
-    }
-
-    pub fn transport_dropdown(&self) -> &DropdownState {
-        &self.transport_dropdown
-    }
-
-    pub fn ssl_dropdown(&self) -> &DropdownState {
-        &self.ssl_dropdown
+    pub fn open_dropdown(&self) -> Option<(ConnectionDropdown, usize)> {
+        self.open_dropdown
     }
 
     pub fn validation_error(&self, field: ConnectionField) -> Option<&str> {
@@ -381,9 +372,7 @@ impl ConnectionSetupState {
                 self.port.set_content(default_port.to_string());
             }
         }
-        self.database_type_dropdown.is_open = false;
-        self.transport_dropdown.is_open = false;
-        self.ssl_dropdown.is_open = false;
+        self.cancel_dropdown();
         if !self.visible_fields().contains(&self.focused_field) {
             self.focused_field = ConnectionField::DatabaseType;
         }
@@ -391,144 +380,95 @@ impl ConnectionSetupState {
     }
 
     pub fn toggle_focused_dropdown(&mut self) {
-        match self.focused_field {
-            ConnectionField::DatabaseType => {
-                self.database_type_dropdown.is_open = !self.database_type_dropdown.is_open;
-                self.transport_dropdown.is_open = false;
-                self.ssl_dropdown.is_open = false;
-                if self.database_type_dropdown.is_open {
-                    self.database_type_dropdown.selected_index = DatabaseType::all()
-                        .iter()
-                        .position(|v| *v == self.database_type)
-                        .unwrap_or(0);
-                }
-            }
-            ConnectionField::Transport => {
-                self.transport_dropdown.is_open = !self.transport_dropdown.is_open;
-                self.database_type_dropdown.is_open = false;
-                self.ssl_dropdown.is_open = false;
-                if self.transport_dropdown.is_open {
-                    self.transport_dropdown.selected_index = MySqlTransport::all_variants()
-                        .iter()
-                        .position(|v| *v == self.mysql_transport)
-                        .unwrap_or(0);
-                }
-            }
-            ConnectionField::SslMode | ConnectionField::CleartextAuth => {
-                self.ssl_dropdown.is_open = !self.ssl_dropdown.is_open;
-                self.database_type_dropdown.is_open = false;
-                self.transport_dropdown.is_open = false;
-                if self.ssl_dropdown.is_open {
-                    self.ssl_dropdown.selected_index =
-                        if self.focused_field == ConnectionField::CleartextAuth {
-                            usize::from(self.enable_cleartext_plugin)
-                        } else {
-                            match self.database_type {
-                                DatabaseType::MySQL => MySqlSslMode::all_variants()
-                                    .iter()
-                                    .position(|v| *v == self.mysql_ssl_mode)
-                                    .unwrap_or(1),
-                                DatabaseType::PostgreSQL | DatabaseType::SQLite => {
-                                    SslMode::all_variants()
-                                        .iter()
-                                        .position(|v| *v == self.ssl_mode)
-                                        .unwrap_or(2)
-                                }
-                            }
-                        };
-                }
-            }
-            _ => {}
+        if self
+            .open_dropdown
+            .is_some_and(|(dropdown, _)| dropdown.field() == self.focused_field)
+        {
+            self.cancel_dropdown();
+            return;
         }
+        let dropdown = match self.focused_field {
+            ConnectionField::DatabaseType => (
+                ConnectionDropdown::DatabaseType,
+                DatabaseType::all()
+                    .iter()
+                    .position(|value| *value == self.database_type)
+                    .unwrap_or(0),
+            ),
+            ConnectionField::Transport => (
+                ConnectionDropdown::Transport,
+                MySqlTransport::all_variants()
+                    .iter()
+                    .position(|value| *value == self.mysql_transport)
+                    .unwrap_or(0),
+            ),
+            ConnectionField::SslMode => (
+                ConnectionDropdown::SslMode,
+                if self.database_type == DatabaseType::MySQL {
+                    MySqlSslMode::all_variants()
+                        .iter()
+                        .position(|value| *value == self.mysql_ssl_mode)
+                        .unwrap_or(1)
+                } else {
+                    SslMode::all_variants()
+                        .iter()
+                        .position(|value| *value == self.ssl_mode)
+                        .unwrap_or(2)
+                },
+            ),
+            ConnectionField::CleartextAuth => (
+                ConnectionDropdown::CleartextAuth,
+                usize::from(self.enable_cleartext_plugin),
+            ),
+            _ => return,
+        };
+        self.open_dropdown = Some(dropdown);
     }
 
     pub fn dropdown_next(&mut self) {
-        if self.database_type_dropdown.is_open {
-            let max = DatabaseType::all().len() - 1;
-            if self.database_type_dropdown.selected_index < max {
-                self.database_type_dropdown.selected_index += 1;
-            }
-        } else if self.transport_dropdown.is_open {
-            let max = MySqlTransport::all_variants().len() - 1;
-            if self.transport_dropdown.selected_index < max {
-                self.transport_dropdown.selected_index += 1;
-            }
-        } else if self.ssl_dropdown.is_open {
-            let max = if self.focused_field == ConnectionField::CleartextAuth {
-                1
-            } else {
-                match self.database_type {
-                    DatabaseType::MySQL => MySqlSslMode::all_variants().len() - 1,
-                    DatabaseType::PostgreSQL | DatabaseType::SQLite => {
-                        SslMode::all_variants().len() - 1
-                    }
+        if let Some((dropdown, index)) = &mut self.open_dropdown {
+            let count = match dropdown {
+                ConnectionDropdown::DatabaseType => DatabaseType::all().len(),
+                ConnectionDropdown::Transport => MySqlTransport::all_variants().len(),
+                ConnectionDropdown::SslMode if self.database_type == DatabaseType::MySQL => {
+                    MySqlSslMode::all_variants().len()
                 }
+                ConnectionDropdown::SslMode => SslMode::all_variants().len(),
+                ConnectionDropdown::CleartextAuth => 2,
             };
-            if self.ssl_dropdown.selected_index < max {
-                self.ssl_dropdown.selected_index += 1;
-            }
+            *index = (*index + 1).min(count - 1);
         }
     }
 
     pub fn dropdown_prev(&mut self) {
-        if self.database_type_dropdown.is_open {
-            self.database_type_dropdown.selected_index =
-                self.database_type_dropdown.selected_index.saturating_sub(1);
-        } else if self.transport_dropdown.is_open {
-            self.transport_dropdown.selected_index =
-                self.transport_dropdown.selected_index.saturating_sub(1);
-        } else if self.ssl_dropdown.is_open {
-            self.ssl_dropdown.selected_index = self.ssl_dropdown.selected_index.saturating_sub(1);
+        if let Some((_, index)) = &mut self.open_dropdown {
+            *index = index.saturating_sub(1);
         }
     }
 
     pub fn confirm_dropdown(&mut self) {
-        if self.database_type_dropdown.is_open {
-            if let Some(database_type) =
-                DatabaseType::all().get(self.database_type_dropdown.selected_index)
-            {
-                self.set_database_type(*database_type);
+        let Some((dropdown, index)) = self.open_dropdown.take() else {
+            return;
+        };
+        match dropdown {
+            ConnectionDropdown::DatabaseType => self.set_database_type(DatabaseType::all()[index]),
+            ConnectionDropdown::Transport => {
+                self.set_mysql_transport(MySqlTransport::all_variants()[index]);
             }
-        } else if self.transport_dropdown.is_open {
-            if let Some(transport) =
-                MySqlTransport::all_variants().get(self.transport_dropdown.selected_index)
-            {
-                self.set_mysql_transport(*transport);
+            ConnectionDropdown::SslMode if self.database_type == DatabaseType::MySQL => {
+                self.set_mysql_ssl_mode(MySqlSslMode::all_variants()[index]);
             }
-            self.transport_dropdown.is_open = false;
-        } else if self.ssl_dropdown.is_open {
-            match self.database_type {
-                DatabaseType::MySQL => {
-                    if self.focused_field == ConnectionField::CleartextAuth {
-                        self.enable_cleartext_plugin = self.ssl_dropdown.selected_index == 1;
-                    } else if let Some(mode) =
-                        MySqlSslMode::all_variants().get(self.ssl_dropdown.selected_index)
-                    {
-                        self.set_mysql_ssl_mode(*mode);
-                    }
-                }
-                DatabaseType::PostgreSQL | DatabaseType::SQLite => {
-                    if let Some(mode) =
-                        SslMode::all_variants().get(self.ssl_dropdown.selected_index)
-                    {
-                        self.ssl_mode = *mode;
-                    }
-                }
-            }
-            self.ssl_dropdown.is_open = false;
+            ConnectionDropdown::SslMode => self.ssl_mode = SslMode::all_variants()[index],
+            ConnectionDropdown::CleartextAuth => self.enable_cleartext_plugin = index == 1,
         }
     }
 
     pub fn cancel_dropdown(&mut self) {
-        self.database_type_dropdown.is_open = false;
-        self.transport_dropdown.is_open = false;
-        self.ssl_dropdown.is_open = false;
+        self.open_dropdown = None;
     }
 
     pub fn has_open_dropdown(&self) -> bool {
-        self.database_type_dropdown.is_open
-            || self.transport_dropdown.is_open
-            || self.ssl_dropdown.is_open
+        self.open_dropdown.is_some()
     }
 
     fn set_mysql_ssl_mode(&mut self, mode: MySqlSslMode) {
@@ -979,23 +919,17 @@ mod tests {
             state.set_database_type(DatabaseType::MySQL);
             state.mysql_ssl_mode = MySqlSslMode::VerifyCa;
             state.ssl_ca.set_content("/tmp/old-ca.pem".to_string());
-            state.ssl_dropdown.is_open = true;
-            state.ssl_dropdown.selected_index = MySqlSslMode::all_variants()
-                .iter()
-                .position(|mode| *mode == MySqlSslMode::Required)
-                .unwrap();
+            state.focused_field = ConnectionField::SslMode;
+            state.toggle_focused_dropdown();
+            state.dropdown_prev();
 
             state.confirm_dropdown();
 
             assert_eq!(state.mysql_ssl_mode, MySqlSslMode::Required);
             assert!(state.ssl_ca.content().is_empty());
 
-            state.focused_field = ConnectionField::SslMode;
             state.toggle_focused_dropdown();
-            state.ssl_dropdown.selected_index = MySqlSslMode::all_variants()
-                .iter()
-                .position(|mode| *mode == MySqlSslMode::VerifyCa)
-                .unwrap();
+            state.dropdown_next();
             state.confirm_dropdown();
 
             assert_eq!(state.mysql_ssl_mode, MySqlSslMode::VerifyCa);
