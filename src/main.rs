@@ -23,7 +23,7 @@ use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::{
     ArboardClipboard, CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter,
     FileQueryHistoryStore, FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener,
-    PgServiceFileReader, TomlConnectionStore, TomlSettingsStore,
+    PgServiceFileReader, TomlConfigStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
     let infrastructure = build_infrastructure()?;
-    let app_settings = infrastructure.settings_store.load().unwrap_or_default();
+    let app_settings = infrastructure.config_store.load_settings();
     let state = initialize_state(
         project_name,
         app_settings,
@@ -114,16 +114,14 @@ fn resolve_cli_database(database: Option<String>) -> Result<Option<CliSqliteTarg
 
 struct Infrastructure {
     adapter_registry: Arc<DbAdapterRegistry>,
-    connection_store: Arc<TomlConnectionStore>,
-    settings_store: Arc<TomlSettingsStore>,
+    config_store: Arc<TomlConfigStore>,
     pg_service_entry_reader: Arc<dyn PgServiceEntryReader>,
 }
 
 fn build_infrastructure() -> Result<Infrastructure> {
     Ok(Infrastructure {
         adapter_registry: Arc::new(DbAdapterRegistry::new()),
-        connection_store: Arc::new(TomlConnectionStore::new()?),
-        settings_store: Arc::new(TomlSettingsStore::new()?),
+        config_store: Arc::new(TomlConfigStore::new()?),
         pg_service_entry_reader: Arc::new(PgServiceFileReader::new()),
     })
 }
@@ -143,7 +141,7 @@ fn initialize_state(
     state.motion.enable();
     apply_app_settings(&mut state, app_settings);
 
-    match infrastructure.connection_store.load_all() {
+    match infrastructure.config_store.load_all() {
         Ok(mut profiles) => {
             let has_saved_profiles = !profiles.is_empty();
             profiles.sort_by(|a, b| {
@@ -161,7 +159,7 @@ fn initialize_state(
                  Please delete {} and reconfigure.",
                 found,
                 expected,
-                infrastructure.connection_store.storage_path().display()
+                infrastructure.config_store.storage_path().display()
             );
             std::process::exit(1);
         }
@@ -312,7 +310,7 @@ impl Runtime {
             Arc::clone(&adapter_registry) as _,
             ConnectionDeps {
                 mysql_connection_probe: Arc::clone(&adapter_registry) as _,
-                connection_store: Arc::clone(&infrastructure.connection_store) as _,
+                connection_store: Arc::clone(&infrastructure.config_store) as _,
                 pg_service_entry_reader: Arc::clone(&infrastructure.pg_service_entry_reader),
                 sqlite_path_validator: Arc::new(FsSqlitePathValidator),
             },
@@ -331,7 +329,7 @@ impl Runtime {
                 clipboard: Arc::new(ArboardClipboard),
                 folder_opener: Arc::new(NativeFolderOpener),
             },
-            Arc::clone(&infrastructure.settings_store) as _,
+            Arc::clone(&infrastructure.config_store) as _,
             action_tx,
         );
 
