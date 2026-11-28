@@ -1,3 +1,4 @@
+use crate::model::shared::flash_timer::clear_expired;
 use std::collections::BTreeSet;
 use std::time::Instant;
 
@@ -204,11 +205,7 @@ impl ResultInteraction {
     }
 
     pub fn clear_expired_flash(&mut self, now: Instant) {
-        if let Some(flash) = self.yank_flash
-            && now >= flash.until
-        {
-            self.yank_flash = None;
-        }
+        clear_expired(&mut self.yank_flash, now, |flash| flash.until);
     }
 }
 

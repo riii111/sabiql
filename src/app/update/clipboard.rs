@@ -1,11 +1,10 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::model::app_state::AppState;
+use crate::model::shared::flash_timer::FLASH_DURATION;
 use crate::model::shared::ui_state::YankFlash;
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::update::action::CopyTarget;
-
-const RESULT_YANK_FLASH: Duration = Duration::from_millis(200);
 
 pub(in crate::update) fn copied(
     state: &mut AppState,
@@ -28,14 +27,14 @@ pub(in crate::update) fn copied(
             state.result_interaction.set_yank_flash(Some(YankFlash {
                 row,
                 col: Some(col),
-                until: now + RESULT_YANK_FLASH,
+                until: now + FLASH_DURATION,
             }));
         }
         CopyTarget::ResultRow { row } => {
             state.result_interaction.set_yank_flash(Some(YankFlash {
                 row,
                 col: None,
-                until: now + RESULT_YANK_FLASH,
+                until: now + FLASH_DURATION,
             }));
         }
         CopyTarget::ConnectionError => state.connection_error.mark_copied_at(now),

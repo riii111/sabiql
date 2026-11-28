@@ -5,7 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::theme::ThemePalette;
 
@@ -66,9 +66,27 @@ pub(crate) fn text_cursor_spans_with_kind(
     // Clamp viewport_offset to total length
     let vp = viewport_offset.min(total);
 
-    // Determine how many chars are visible within the viewport
-    let view_end = vp.saturating_add(visible_width).min(total);
-    let visible: Vec<char> = chars[vp..view_end].to_vec();
+    // The terminal clips by cells, not Unicode scalar values. Reserve the
+    // final cell for an end-of-input block cursor.
+    let text_width = if matches!(kind, CursorKind::Block) && cursor >= total {
+        visible_width.saturating_sub(1)
+    } else {
+        visible_width
+    };
+    let mut used = 0usize;
+    let visible: Vec<char> = chars[vp..]
+        .iter()
+        .copied()
+        .take_while(|ch| {
+            let next = used.saturating_add(UnicodeWidthChar::width(*ch).unwrap_or(0));
+            if next > text_width {
+                false
+            } else {
+                used = next;
+                true
+            }
+        })
+        .collect();
     let cursor_in_view = cursor.checked_sub(vp);
 
     let cursor_style = cursor_style_for(kind, theme);
@@ -477,6 +495,14 @@ mod tests {
 
                 let texts = spans_to_strings(&spans);
                 assert_eq!(texts, vec!["", " "]);
+            }
+
+            #[test]
+            fn wide_characters_and_end_cursor_fit_in_cells() {
+                let spans = text_cursor_spans("日本", 2, 1, 3, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec!["本", " "]);
+                let spans = text_cursor_spans("日本", 0, 0, 1, &DEFAULT_THEME);
+                assert_eq!(spans_to_strings(&spans), vec![""]);
             }
 
             #[test]

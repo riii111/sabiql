@@ -4,7 +4,7 @@ expression: output
 ---
 ⌂ test_project ▸ My app ▸ ▦ users                                                                                                                   connected | mysql
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│▸ ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  ▦ audit_log                          ││Comment: (none)                                                                                                           │
 │                                       ││Rows:    (none)                                                                                                           │
 │                                       ││Table:   users                                                                                                            │

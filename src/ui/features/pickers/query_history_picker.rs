@@ -1,8 +1,9 @@
+use super::render_picker_list;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, ListItem, Paragraph, Wrap};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -121,9 +122,7 @@ impl QueryHistoryPicker {
                     Picker::QueryHistory,
                     HintSurface::Border,
                     &KeyContext::from_state(state),
-                )
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
+                ),
             ),
             theme,
         );
@@ -200,14 +199,14 @@ impl QueryHistoryPicker {
         }
         drop(grouped);
 
-        let list = List::new(items)
-            .highlight_style(theme.picker_selected_style())
-            .highlight_symbol("\u{25b8} ");
-
-        let mut list_state = ListState::default()
-            .with_selected(Some(selected_idx))
-            .with_offset(scroll_offset);
-        frame.render_stateful_widget(list, list_area, &mut list_state);
+        render_picker_list(
+            frame,
+            list_area,
+            items,
+            Some(selected_idx),
+            scroll_offset,
+            theme,
+        );
         PickerLayout {
             pane_height: list_area.height,
             filter_visible_width: visible_width,

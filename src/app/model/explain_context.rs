@@ -1,5 +1,6 @@
 use crate::domain::DatabaseType;
 use crate::domain::explain_plan::{self, ExplainPlan};
+use crate::model::shared::scroll::ScrollOffset;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,14 +37,14 @@ enum ExplainSurface {
 #[derive(Debug, Clone, Default)]
 pub struct ExplainContext {
     surface: ExplainSurface,
-    pub(crate) scroll_offset: usize,
+    pub(crate) scroll_offset: ScrollOffset,
 
     pub(crate) left: Option<CompareSlot>,
     pub(crate) right: Option<CompareSlot>,
-    pub(crate) compare_scroll_offset: usize,
+    pub(crate) compare_scroll_offset: ScrollOffset,
 
     pub(crate) compare_viewport_height: Option<u16>,
-    pub(crate) confirm_scroll_offset: usize,
+    pub(crate) confirm_scroll_offset: ScrollOffset,
 }
 
 impl ExplainContext {
@@ -76,7 +77,7 @@ impl ExplainContext {
     }
 
     pub fn scroll_offset(&self) -> usize {
-        self.scroll_offset
+        self.scroll_offset.get()
     }
 
     pub fn compare_slots(&self) -> (Option<&CompareSlot>, Option<&CompareSlot>) {
@@ -88,11 +89,11 @@ impl ExplainContext {
     }
 
     pub fn compare_scroll_offset(&self) -> usize {
-        self.compare_scroll_offset
+        self.compare_scroll_offset.get()
     }
 
     pub fn confirm_scroll_offset(&self) -> usize {
-        self.confirm_scroll_offset
+        self.confirm_scroll_offset.get()
     }
 
     pub fn set_plan(
@@ -126,13 +127,13 @@ impl ExplainContext {
         self.right = Some(new_slot);
 
         self.surface = ExplainSurface::Current;
-        self.scroll_offset = 0;
-        self.compare_scroll_offset = 0;
+        self.scroll_offset.set(0);
+        self.compare_scroll_offset.set(0);
     }
 
     pub fn set_error(&mut self, error: String) {
         self.surface = ExplainSurface::Error(error);
-        self.scroll_offset = 0;
+        self.scroll_offset.set(0);
     }
 
     pub fn set_compare_viewport_height(&mut self, height: u16) {
@@ -322,8 +323,8 @@ mod tests {
             0,
             "B",
         );
-        ctx.scroll_offset = 10;
-        ctx.compare_scroll_offset = 5;
+        ctx.scroll_offset.set(10);
+        ctx.compare_scroll_offset.set(5);
 
         ctx.reset_for_new_run();
 

@@ -235,6 +235,7 @@ impl AppState {
     fn apply_input_layout(&mut self, layout: InputLayout) {
         if let Some(width) = layout.command_line_visible_width {
             self.command_line_visible_width = width;
+            self.command_line_input.update_viewport(width);
         }
     }
 
@@ -1137,7 +1138,7 @@ mod tests {
 
             assert_eq!(state.confirm_dialog.preview_viewport_height, Some(10));
             assert_eq!(state.confirm_dialog.preview_content_height, Some(25));
-            assert_eq!(state.confirm_dialog.preview_scroll, 4);
+            assert_eq!(state.confirm_dialog.preview_scroll(), 4);
         }
 
         #[test]
@@ -1145,13 +1146,13 @@ mod tests {
             let mut state = make_state();
             state.confirm_dialog.preview_viewport_height = Some(10);
             state.confirm_dialog.preview_content_height = Some(25);
-            state.confirm_dialog.preview_scroll = 4;
+            state.confirm_dialog.preview_scroll.set(4);
 
             state.apply_render_output(RenderOutput::default());
 
             assert_eq!(state.confirm_dialog.preview_viewport_height, None);
             assert_eq!(state.confirm_dialog.preview_content_height, None);
-            assert_eq!(state.confirm_dialog.preview_scroll, 0);
+            assert_eq!(state.confirm_dialog.preview_scroll(), 0);
         }
 
         #[test]

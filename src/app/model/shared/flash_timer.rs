@@ -1,7 +1,21 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-const FLASH_DURATION: Duration = Duration::from_millis(200);
+pub(crate) const FLASH_DURATION: Duration = Duration::from_millis(200);
+
+/// Remove a timed value at its deadline and report whether it expired.
+pub(crate) fn clear_expired<T>(
+    value: &mut Option<T>,
+    now: Instant,
+    deadline: impl FnOnce(&T) -> Instant,
+) -> bool {
+    if value.as_ref().is_some_and(|value| now >= deadline(value)) {
+        *value = None;
+        true
+    } else {
+        false
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FlashId {

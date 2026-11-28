@@ -65,7 +65,7 @@ pub(in crate::update) fn explain_analyze_request(
         return vec![];
     }
 
-    state.explain.confirm_scroll_offset = 0;
+    state.explain.confirm_scroll_offset.set(0);
 
     match risk.confirmation {
         ConfirmationType::TableNameInput { target, .. } => {

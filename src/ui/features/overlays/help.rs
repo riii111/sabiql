@@ -34,11 +34,10 @@ const FILTER_LABEL: &str = "Filter: ";
 impl HelpOverlay {
     pub(crate) fn render(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
         let document = HelpDocument::from_state(state);
-        let footer = FooterHintBar::new(
-            help_hints(HintSurface::Border, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-        );
+        let footer = FooterHintBar::new(help_hints(
+            HintSurface::Border,
+            &KeyContext::from_state(state),
+        ));
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(HELP_MODAL_WIDTH_PERCENT),

@@ -1,3 +1,4 @@
+use super::flash_timer::clear_expired;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default)]
@@ -39,11 +40,8 @@ impl MessageState {
     }
 
     pub fn clear_expired_at(&mut self, now: Instant) {
-        if let Some(expires) = self.expires_at
-            && expires <= now
-        {
+        if clear_expired(&mut self.expires_at, now, |deadline| *deadline) {
             self.last_success = None;
-            self.expires_at = None;
         }
     }
 

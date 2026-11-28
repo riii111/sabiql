@@ -24,16 +24,17 @@ impl CommandLine {
 
         let content = if state.input_mode() == InputMode::CommandLine {
             let input = &state.command_line_input;
-            let visible_width = if input.cursor() == input.char_count() {
-                raw_width.saturating_sub(1)
-            } else {
-                raw_width
-            };
             let cursor_spans = text_cursor_spans(
                 input.content(),
                 input.cursor(),
-                input.viewport_offset(),
-                visible_width,
+                crate::app::model::shared::text_input::input_viewport_offset(
+                    input.content(),
+                    input.cursor(),
+                    input.viewport_offset(),
+                    raw_width,
+                    true,
+                ),
+                raw_width,
                 theme,
             );
             let mut spans = vec![Span::styled(

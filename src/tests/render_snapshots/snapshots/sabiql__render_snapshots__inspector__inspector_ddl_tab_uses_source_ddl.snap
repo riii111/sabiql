@@ -4,7 +4,7 @@ expression: output
 ---
 ⌂ test_project ▸ My test_db ▸ -                                                                                                                       connected | app
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│▸ ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  ▦ posts                              ││CREATE VIRTUAL TABLE users USING fts5(name, email);                                                                       │
 │  ▦ comments                           ││-- source ddl is not rebuilt                                                                                              │
 │                                       ││                                                                                                                          │

@@ -4,7 +4,7 @@ expression: output
 ---
 ⌂ test_project ▸ My test_db ▸ -                                                                                                                       connected | app
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
-│> ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│▸ ▦ users                              │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  ▦ posts                              ││Name      Type           Null   PK   Read-only   Default   Comment       Charset   Collation     Generation               │
 │  ▦ comments                           ││◆ id      integer               ✓                          Primary key                                                    │
 │                                       │││ name    varchar(255)                                                   utf8mb4   utf8mb4_bin                            │

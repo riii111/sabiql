@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
@@ -19,7 +19,7 @@ use crate::app::update::input::keymap::{
     HintSurface, KeyContext, sql_confirmation_hints, sql_edit_hints, sql_view_hints,
 };
 use crate::primitives::molecules::overlay::{centered_rect, render_scrim};
-use crate::primitives::molecules::{FooterHintBar, render_modal_with_border_color};
+use crate::primitives::molecules::{FooterHintBar, render_modal_with_border_color, tab_span};
 use crate::theme::ThemePalette;
 
 mod completion;
@@ -91,11 +91,7 @@ impl SqlModal {
                         Constraint::Percentage(80),
                         Constraint::Percentage(SQL_MODAL_HEIGHT_PERCENT),
                         title,
-                        FooterHintBar::new(
-                            confirmation_hints
-                                .iter()
-                                .map(|hint| (hint.key.clone(), hint.short)),
-                        ),
+                        FooterHintBar::new(confirmation_hints.iter()),
                         border_color,
                         theme,
                     )
@@ -104,23 +100,19 @@ impl SqlModal {
             }
         } else {
             let hint = match state.sql_modal.status() {
-                SqlModalStatus::Editing => FooterHintBar::new(
-                    sql_edit_hints(HintSurface::Border, &KeyContext::from_state(state))
-                        .into_iter()
-                        .map(|hint| (hint.key, hint.short)),
-                ),
+                SqlModalStatus::Editing => FooterHintBar::new(sql_edit_hints(
+                    HintSurface::Border,
+                    &KeyContext::from_state(state),
+                )),
                 SqlModalStatus::Running => FooterHintBar::message("Running\u{2026}"),
                 SqlModalStatus::ConfirmingAnalyzeHigh { .. }
-                | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => FooterHintBar::new(
-                    confirmation_hints
-                        .iter()
-                        .map(|hint| (hint.key.clone(), hint.short)),
-                ),
-                _ => FooterHintBar::new(
-                    sql_view_hints(HintSurface::Border, &KeyContext::from_state(state))
-                        .into_iter()
-                        .map(|hint| (hint.key, hint.short)),
-                ),
+                | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => {
+                    FooterHintBar::new(confirmation_hints.iter())
+                }
+                _ => FooterHintBar::new(sql_view_hints(
+                    HintSurface::Border,
+                    &KeyContext::from_state(state),
+                )),
             };
             Self::render_modal_with_tabs(frame, active_tab, hint, &engine_feature_profile, theme)
         };
@@ -213,18 +205,6 @@ impl SqlModal {
         theme: &ThemePalette,
     ) -> Line<'static> {
         let title_style = theme.modal_title_style();
-        let active_style = Style::default()
-            .fg(theme.component.navigation.tab_active)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
-        let inactive_style = Style::default().fg(theme.component.navigation.tab_inactive);
-
-        let style_for = |tab: SqlModalTab| {
-            if tab == active_tab {
-                active_style
-            } else {
-                inactive_style
-            }
-        };
         let supported_tabs = engine_feature_profile.supported_sql_modal_tabs();
 
         if supported_tabs.len() == 1 {
@@ -241,7 +221,7 @@ impl SqlModal {
                 SqlModalTab::Plan => "[Plan]",
                 SqlModalTab::Compare => "[Compare]",
             };
-            spans.push(Span::styled(label, style_for(*tab)));
+            spans.push(tab_span(label, *tab == active_tab, theme));
             spans.push(Span::raw(" "));
         }
         Line::from(spans)

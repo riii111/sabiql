@@ -134,6 +134,25 @@ pub enum CursorPosition {
     Bottom,
 }
 
+impl CursorPosition {
+    pub(crate) fn scroll_offset(
+        self,
+        selected: usize,
+        visible: usize,
+        max: usize,
+    ) -> Option<usize> {
+        if visible == 0 {
+            return None;
+        }
+        let offset = match self {
+            Self::Center => selected.saturating_sub(visible / 2),
+            Self::Top => selected,
+            Self::Bottom => selected.saturating_sub(visible - 1),
+        };
+        Some(offset.min(max))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputTarget {
     SqlModal,

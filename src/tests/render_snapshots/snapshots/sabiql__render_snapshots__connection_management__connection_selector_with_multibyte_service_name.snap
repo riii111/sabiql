@@ -3,7 +3,7 @@ source: src/tests/render_snapshots/connection_management.rs
 expression: output
 ---
 ╭ Select Connection ──────────────────────────────────────────────────────────────────────────────╮
-│>   Pg 本 番 デ ー タ ベ ー ス 接 続              from pg_service.conf                                     │
+│▸   Pg 本 番 デ ー タ ベ ー ス 接 続              from pg_service.conf                                     │
 │                                                                                                 │
 │                                                                                                 │
 │                                                                                                 │

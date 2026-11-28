@@ -1,7 +1,8 @@
+use super::render_picker_list;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::Style;
-use ratatui::widgets::{List, ListItem, ListState};
+use ratatui::widgets::ListItem;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
@@ -27,15 +28,11 @@ impl CommandPalette {
             Constraint::Percentage(50),
             Constraint::Percentage(50),
             " Command Palette ",
-            FooterHintBar::new(
-                picker_hints(
-                    Picker::CommandPalette,
-                    HintSurface::Border,
-                    &KeyContext::from_state(state),
-                )
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-            ),
+            FooterHintBar::new(picker_hints(
+                Picker::CommandPalette,
+                HintSurface::Border,
+                &KeyContext::from_state(state),
+            )),
             theme,
         );
 
@@ -47,13 +44,8 @@ impl CommandPalette {
 
         let items: Vec<ListItem> = listed_palette_entries(state)
             .iter()
-            .enumerate()
-            .map(|(i, kb)| {
-                let style = if i == picker.selected() {
-                    theme.picker_selected_style()
-                } else {
-                    Style::default().fg(theme.semantic.text.secondary)
-                };
+            .map(|kb| {
+                let style = Style::default().fg(theme.semantic.text.secondary);
                 let icon = command_icon(&kb.action)
                     .map_or("", |icon| icon.prefix(state.settings.saved_icon_mode()));
                 let content = format!("  {:<18} {icon}{}", kb.key, kb.description);
@@ -61,11 +53,14 @@ impl CommandPalette {
             })
             .collect();
 
-        // The list widget scrolls to the selection, so a resize never leaves the command Enter runs off screen.
-        let mut list_state = ListState::default()
-            .with_offset(picker.scroll_offset())
-            .with_selected(Some(picker.selected()));
-        frame.render_stateful_widget(List::new(items), list_area, &mut list_state);
+        render_picker_list(
+            frame,
+            list_area,
+            items,
+            Some(picker.selected()),
+            picker.scroll_offset(),
+            theme,
+        );
 
         PickerLayout {
             pane_height: list_area.height,

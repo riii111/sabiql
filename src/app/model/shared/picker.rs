@@ -1,17 +1,15 @@
 use std::borrow::Cow;
 
-use crate::model::shared::cursor::CursorMove;
-
 use super::text_input::TextInputState;
-use crate::model::shared::text_input::TextEdit;
+use crate::model::shared::text_input::{TextEdit, apply_filter_edit};
 
 #[derive(Debug, Clone, Default)]
 pub struct PickerState {
-    selected: usize,
-    scroll_offset: usize,
-    pane_height: u16,
-    filter_visible_width: usize,
-    filter_input: TextInputState,
+    pub(crate) selected: usize,
+    pub(crate) scroll_offset: usize,
+    pub(crate) pane_height: u16,
+    pub(crate) filter_visible_width: usize,
+    pub(crate) filter_input: TextInputState,
 }
 
 impl PickerState {
@@ -34,6 +32,14 @@ impl PickerState {
     pub fn set_filter_visible_width(&mut self, width: usize) {
         self.filter_visible_width = width;
         self.filter_input.update_viewport(width);
+    }
+
+    pub fn pane_height(&self) -> u16 {
+        self.pane_height
+    }
+
+    pub fn filter_visible_width(&self) -> usize {
+        self.filter_visible_width
     }
 
     pub fn visible_items(&self) -> usize {
@@ -73,16 +79,12 @@ impl PickerState {
     }
 
     pub fn apply_filter_edit(&mut self, edit: TextEdit, yank_text: Option<&str>) -> String {
-        if let TextEdit::MoveCursor(direction) = edit {
-            self.move_filter_cursor(direction);
-            return String::new();
-        }
-        self.edit_filter(|input| input.apply_edit(edit, yank_text))
-    }
-
-    fn move_filter_cursor(&mut self, direction: CursorMove) {
-        self.filter_input.move_cursor(direction);
+        let (result, reset) = apply_filter_edit(&mut self.filter_input, edit, yank_text);
         self.filter_input.update_viewport(self.filter_visible_width);
+        if reset {
+            self.reset();
+        }
+        result
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+use crate::model::shared::scroll::ScrollOffset;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 enum LoadState {
@@ -47,7 +48,7 @@ impl DiagnosticFieldKind {
 pub struct SqliteDiagnosticsState {
     next_run_id: u64,
     load_state: LoadState,
-    scroll_offset: usize,
+    scroll_offset: ScrollOffset,
     content_line_count: Option<usize>,
     visible_rows: Option<usize>,
 }
@@ -57,7 +58,7 @@ impl SqliteDiagnosticsState {
         self.next_run_id = self.next_run_id.wrapping_add(1);
         let run_id = self.next_run_id;
         self.load_state = LoadState::LoadingCore { run_id };
-        self.scroll_offset = 0;
+        self.scroll_offset.set(0);
         self.content_line_count = None;
         self.visible_rows = None;
         run_id
@@ -152,22 +153,23 @@ impl SqliteDiagnosticsState {
     }
 
     pub fn scroll_offset(&self) -> usize {
-        self.scroll_offset
+        self.scroll_offset.get()
     }
 
     pub fn scroll_up(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        self.scroll_offset.backward(1);
     }
 
     pub fn scroll_down(&mut self) {
-        if self.scroll_offset < self.max_scroll() {
-            self.scroll_offset += 1;
+        let max = self.max_scroll();
+        if self.scroll_offset.get() < max {
+            self.scroll_offset.forward(1, max);
         }
     }
 
     pub fn clear(&mut self) {
         self.load_state = LoadState::Idle;
-        self.scroll_offset = 0;
+        self.scroll_offset.set(0);
         self.content_line_count = None;
         self.visible_rows = None;
     }
@@ -182,11 +184,12 @@ impl SqliteDiagnosticsState {
     pub fn apply_viewport_metrics(&mut self, content_line_count: usize, visible_rows: usize) {
         self.content_line_count = Some(content_line_count);
         self.visible_rows = Some(visible_rows);
-        self.scroll_offset = self.scroll_offset.min(self.max_scroll());
+        let max = self.max_scroll();
+        self.scroll_offset.clamp(max);
     }
 
     pub fn set_scroll_offset(&mut self, offset: usize) {
-        self.scroll_offset = offset;
+        self.scroll_offset.set(offset);
     }
 }
 
@@ -341,7 +344,7 @@ mod tests {
         state.apply_viewport_metrics(12, 5);
 
         assert_eq!(state.max_scroll(), 7);
-        state.scroll_offset = 99;
+        state.scroll_offset.set(99);
         state.apply_viewport_metrics(12, 5);
         assert_eq!(state.scroll_offset(), 7);
     }

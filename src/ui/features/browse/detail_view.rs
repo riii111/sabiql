@@ -41,7 +41,7 @@ pub(super) fn render_detail_search(
         &visible_input,
         relative_cursor,
         0,
-        visible_input.chars().count(),
+        visible_width,
         CursorKind::Insert,
         theme,
     ));
@@ -55,21 +55,13 @@ pub(super) fn render_detail_search(
 }
 
 fn search_viewport_offset(input: &str, cursor: usize, visible_width: usize) -> usize {
-    if visible_width == 0 {
-        return cursor;
-    }
-
-    let chars: Vec<char> = input.chars().collect();
-    let mut viewport_offset = 0;
-    let mut width_before_cursor = display_width(&chars[..cursor.min(chars.len())]);
-
-    while width_before_cursor > visible_width && viewport_offset < cursor {
-        width_before_cursor =
-            width_before_cursor.saturating_sub(char_width(chars[viewport_offset]));
-        viewport_offset += 1;
-    }
-
-    viewport_offset
+    crate::app::model::shared::text_input::input_viewport_offset(
+        input,
+        cursor,
+        0,
+        visible_width,
+        false,
+    )
 }
 
 fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) -> String {
@@ -90,10 +82,6 @@ fn slice_chars_fitting_width(input: &str, start: usize, visible_width: usize) ->
     }
 
     visible
-}
-
-fn display_width(chars: &[char]) -> usize {
-    chars.iter().map(|&ch| char_width(ch)).sum()
 }
 
 fn char_width(ch: char) -> usize {

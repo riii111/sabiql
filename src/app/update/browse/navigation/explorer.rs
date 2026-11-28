@@ -95,40 +95,17 @@ pub(in crate::update) fn scroll_to_cursor_explorer(
     state: &mut AppState,
     position: CursorPosition,
 ) -> Vec<Effect> {
-    match position {
-        CursorPosition::Center => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            let len = explorer_item_count(state);
-            let visible = state.ui.explorer_visible_items();
-            if len > 0 && visible > 0 {
-                let selected = state.ui.explorer_selected();
-                let max_offset = len.saturating_sub(visible);
-                state.ui.explorer_scroll_offset =
-                    selected.saturating_sub(visible / 2).min(max_offset);
-            }
-        }
-        CursorPosition::Top => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            let len = explorer_item_count(state);
-            let visible = state.ui.explorer_visible_items();
-            if len > 0 && visible > 0 {
-                let selected = state.ui.explorer_selected();
-                let max_offset = len.saturating_sub(visible);
-                state.ui.explorer_scroll_offset = selected.min(max_offset);
-            }
-        }
-        CursorPosition::Bottom => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            let len = explorer_item_count(state);
-            let visible = state.ui.explorer_visible_items();
-            if len > 0 && visible > 0 {
-                let selected = state.ui.explorer_selected();
-                let max_offset = len.saturating_sub(visible);
-                state.ui.explorer_scroll_offset = selected
-                    .saturating_sub(visible.saturating_sub(1))
-                    .min(max_offset);
-            }
-        }
+    state.ui.key_sequence = KeySequenceState::Idle;
+    let len = explorer_item_count(state);
+    let visible = state.ui.explorer_visible_items();
+    if len > 0
+        && let Some(offset) = position.scroll_offset(
+            state.ui.explorer_selected(),
+            visible,
+            len.saturating_sub(visible),
+        )
+    {
+        state.ui.explorer_scroll_offset = offset;
     }
     vec![]
 }

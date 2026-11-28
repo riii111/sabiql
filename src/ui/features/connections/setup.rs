@@ -72,11 +72,10 @@ impl ConnectionSetup {
         } else {
             " New Connection "
         };
-        let footer = FooterHintBar::new(
-            connection_setup_hints(HintSurface::Border, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-        );
+        let footer = FooterHintBar::new(connection_setup_hints(
+            HintSurface::Border,
+            &KeyContext::from_state(state),
+        ));
 
         let (_, modal_inner) = render_modal(
             frame,
@@ -276,23 +275,24 @@ impl ConnectionSetup {
 
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
-            let viewport = input.viewport_offset();
             let cursor = input.cursor();
-            let char_count = display_value.chars().count();
-
-            let effective_width = if cursor >= char_count {
-                content_width.saturating_sub(1)
-            } else {
-                content_width
-            };
-
+            let viewport = crate::app::model::shared::text_input::input_viewport_offset(
+                &display_value,
+                cursor,
+                input.viewport_offset(),
+                content_width,
+                true,
+            );
             let cursor_spans = if show_placeholder {
-                focused_placeholder_spans(placeholder, effective_width, theme)
+                focused_placeholder_spans(placeholder, content_width, theme)
             } else {
-                text_cursor_spans(&display_value, cursor, viewport, effective_width, theme)
+                text_cursor_spans(&display_value, cursor, viewport, content_width, theme)
             };
 
-            let used_width: usize = cursor_spans.iter().map(|s| s.content.chars().count()).sum();
+            let used_width: usize = cursor_spans
+                .iter()
+                .map(|s| unicode_width::UnicodeWidthStr::width(s.content.as_ref()))
+                .sum();
             let padding = content_width.saturating_sub(used_width);
 
             let mut spans = vec![

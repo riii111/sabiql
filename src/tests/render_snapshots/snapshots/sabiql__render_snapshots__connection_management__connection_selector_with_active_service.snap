@@ -3,7 +3,7 @@ source: src/tests/render_snapshots/connection_management.rs
 expression: output
 ---
 ╭ Select Connection ──────────────────────────────────────────────────────────────────────────────╮
-│> ● Pg dev-local                        from pg_service.conf                                     │
+│▸ ● Pg dev-local                        from pg_service.conf                                     │
 │    Pg prod-replica                     from pg_service.conf                                     │
 │                                                                                                 │
 │                                                                                                 │

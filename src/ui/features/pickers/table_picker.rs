@@ -1,7 +1,8 @@
+use super::render_picker_list;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::Style;
-use ratatui::widgets::{List, ListItem, ListState};
+use ratatui::widgets::ListItem;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
@@ -32,9 +33,7 @@ impl TablePicker {
                     Picker::Table,
                     HintSurface::Border,
                     &KeyContext::from_state(state),
-                )
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
+                ),
             ),
             theme,
         );
@@ -66,19 +65,14 @@ impl TablePicker {
             })
             .collect();
 
-        let list = List::new(items)
-            .highlight_style(theme.picker_selected_style())
-            .highlight_symbol("▸ ");
-
-        let selected = if filtered_count > 0 {
-            Some(state.ui.table_picker().selected())
-        } else {
-            None
-        };
-        let mut list_state = ListState::default()
-            .with_selected(selected)
-            .with_offset(state.ui.table_picker().scroll_offset());
-        frame.render_stateful_widget(list, list_area, &mut list_state);
+        render_picker_list(
+            frame,
+            list_area,
+            items,
+            (filtered_count > 0).then_some(state.ui.table_picker().selected()),
+            state.ui.table_picker().scroll_offset(),
+            theme,
+        );
         PickerLayout {
             pane_height: list_area.height,
             filter_visible_width: visible_width,

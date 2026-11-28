@@ -1,4 +1,39 @@
 use crate::model::shared::cursor::CursorMove;
+use unicode_width::UnicodeWidthChar;
+
+/// Keep a character-indexed cursor visible in a terminal-cell viewport.
+/// A block cursor needs a cell at the end of the input; an insert cursor may
+/// sit at the right edge without consuming a cell.
+pub fn input_viewport_offset(
+    content: &str,
+    cursor: usize,
+    offset: usize,
+    width: usize,
+    block_cursor: bool,
+) -> usize {
+    let chars: Vec<char> = content.chars().collect();
+    let cursor = cursor.min(chars.len());
+    if width == 0 {
+        return cursor;
+    }
+    let mut start = offset.min(cursor);
+    let cursor_width = if block_cursor {
+        chars
+            .get(cursor)
+            .map_or(1, |ch| UnicodeWidthChar::width(*ch).unwrap_or(0).max(1))
+    } else {
+        0
+    };
+    let mut used: usize = chars[start..cursor]
+        .iter()
+        .map(|ch| UnicodeWidthChar::width(*ch).unwrap_or(0))
+        .sum();
+    while start < cursor && used.saturating_add(cursor_width) > width {
+        used = used.saturating_sub(UnicodeWidthChar::width(chars[start]).unwrap_or(0));
+        start += 1;
+    }
+    start
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInputState {
@@ -24,6 +59,17 @@ pub enum TextEdit {
     Kill(TextKillDirection),
     Yank,
     MoveCursor(CursorMove),
+}
+
+/// Apply an edit to a filter and indicate whether dependent selection or
+/// scroll state should be reset. Cursor-only movement keeps that state.
+pub(crate) fn apply_filter_edit(
+    input: &mut TextInputState,
+    edit: TextEdit,
+    yank_text: Option<&str>,
+) -> (String, bool) {
+    let resets_selection = !matches!(edit, TextEdit::MoveCursor(_));
+    (input.apply_edit(edit, yank_text), resets_selection)
 }
 
 impl TextInputState {
@@ -194,23 +240,13 @@ impl TextInputState {
             return;
         }
 
-        // █ occupies one terminal cell at end-of-input; shrink effective width to keep it visible
-        let effective_width = if self.cursor == self.char_count {
-            visible_width.saturating_sub(1)
-        } else {
-            visible_width
-        };
-
-        if effective_width == 0 {
-            self.viewport_offset = self.cursor;
-            return;
-        }
-
-        if self.cursor < self.viewport_offset {
-            self.viewport_offset = self.cursor;
-        } else if self.cursor >= self.viewport_offset + effective_width {
-            self.viewport_offset = self.cursor - effective_width + 1;
-        }
+        self.viewport_offset = input_viewport_offset(
+            &self.content,
+            self.cursor,
+            self.viewport_offset,
+            visible_width,
+            true,
+        );
     }
 
     pub fn set_content(&mut self, s: String) {
@@ -776,14 +812,29 @@ mod tests {
         }
 
         #[test]
+        fn wide_input_keeps_end_cursor_in_the_cell_viewport() {
+            let mut input = TextInputState::new("a日本", 3);
+            input.update_viewport(4);
+            assert_eq!(input.viewport_offset(), 2);
+            input.move_cursor(CursorMove::Left);
+            input.update_viewport(4);
+            assert_eq!(input.viewport_offset(), 2);
+        }
+
+        #[test]
+        fn insert_cursor_can_sit_at_the_right_edge() {
+            assert_eq!(input_viewport_offset("日本", 2, 0, 4, false), 0);
+            assert_eq!(input_viewport_offset("日本", 2, 0, 4, true), 1);
+        }
+
+        #[test]
         fn cursor_at_end_reserves_space_for_block_cursor() {
             let mut s = TextInputState::with_viewport("abcde", 5, 0);
 
             s.update_viewport(5);
 
-            // cursor == char_count, effective_width = 5 - 1 = 4
-            // cursor(5) >= viewport(0) + effective(4), so scroll
-            assert_eq!(s.viewport_offset(), 2);
+            // The cursor itself occupies the final cell.
+            assert_eq!(s.viewport_offset(), 1);
         }
 
         #[test]

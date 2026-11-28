@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
 use super::error::ConnectionErrorInfo;
+use crate::model::shared::flash_timer::clear_expired;
+use crate::model::shared::scroll::ScrollOffset;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum ConnectionErrorSource {
@@ -14,7 +16,7 @@ enum ConnectionErrorSource {
 pub struct ConnectionErrorState {
     error_info: Option<ConnectionErrorInfo>,
     details_expanded: bool,
-    scroll_offset: usize,
+    scroll_offset: ScrollOffset,
     copied_feedback_expires: Option<Instant>,
     source: ConnectionErrorSource,
 }
@@ -37,7 +39,7 @@ impl ConnectionErrorState {
     fn set_error_with_source(&mut self, info: ConnectionErrorInfo, source: ConnectionErrorSource) {
         self.error_info = Some(info);
         self.details_expanded = false;
-        self.scroll_offset = 0;
+        self.scroll_offset.set(0);
         self.copied_feedback_expires = None;
         self.source = source;
     }
@@ -72,18 +74,18 @@ impl ConnectionErrorState {
     }
 
     pub fn scroll_offset(&self) -> usize {
-        self.scroll_offset
+        self.scroll_offset.get()
     }
 
     pub fn reset_view(&mut self) {
         self.details_expanded = false;
-        self.scroll_offset = 0;
+        self.scroll_offset.set(0);
     }
 
     pub fn clear(&mut self) {
         self.error_info = None;
         self.details_expanded = false;
-        self.scroll_offset = 0;
+        self.scroll_offset.set(0);
         self.copied_feedback_expires = None;
         self.source = ConnectionErrorSource::ActiveConnection;
     }
@@ -91,17 +93,17 @@ impl ConnectionErrorState {
     pub fn toggle_details(&mut self) {
         self.details_expanded = !self.details_expanded;
         if !self.details_expanded {
-            self.scroll_offset = 0;
+            self.scroll_offset.set(0);
         }
     }
 
     pub fn scroll_up(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        self.scroll_offset.backward(1);
     }
 
     pub fn scroll_down(&mut self, max_scroll: usize) {
-        if self.scroll_offset < max_scroll {
-            self.scroll_offset += 1;
+        if self.scroll_offset.get() < max_scroll {
+            self.scroll_offset.forward(1, max_scroll);
         }
     }
 
@@ -119,12 +121,7 @@ impl ConnectionErrorState {
     }
 
     pub fn clear_copied_feedback_if_expired(&mut self, now: Instant) {
-        if self
-            .copied_feedback_expires
-            .is_some_and(|expires| expires <= now)
-        {
-            self.clear_copied_feedback();
-        }
+        clear_expired(&mut self.copied_feedback_expires, now, |deadline| *deadline);
     }
 
     pub fn clear_copied_feedback(&mut self) {

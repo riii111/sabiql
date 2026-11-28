@@ -186,44 +186,12 @@ pub(in crate::update) fn scroll_to_cursor_result(
     state: &mut AppState,
     position: CursorPosition,
 ) -> Vec<Effect> {
-    match position {
-        CursorPosition::Center => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            if let Some(row) = state.result_interaction.selection().row() {
-                let visible = state.result_visible_rows();
-                if visible > 0 {
-                    let max_scroll = result_max_scroll(state);
-                    state
-                        .result_interaction
-                        .set_scroll_offset(row.saturating_sub(visible / 2).min(max_scroll));
-                }
-            }
-        }
-        CursorPosition::Top => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            if let Some(row) = state.result_interaction.selection().row() {
-                let visible = state.result_visible_rows();
-                if visible > 0 {
-                    let max_scroll = result_max_scroll(state);
-                    state
-                        .result_interaction
-                        .set_scroll_offset(row.min(max_scroll));
-                }
-            }
-        }
-        CursorPosition::Bottom => {
-            state.ui.key_sequence = KeySequenceState::Idle;
-            if let Some(row) = state.result_interaction.selection().row() {
-                let visible = state.result_visible_rows();
-                if visible > 0 {
-                    let max_scroll = result_max_scroll(state);
-                    state.result_interaction.set_scroll_offset(
-                        row.saturating_sub(visible.saturating_sub(1))
-                            .min(max_scroll),
-                    );
-                }
-            }
-        }
+    state.ui.key_sequence = KeySequenceState::Idle;
+    if let Some(row) = state.result_interaction.selection().row()
+        && let Some(offset) =
+            position.scroll_offset(row, state.result_visible_rows(), result_max_scroll(state))
+    {
+        state.result_interaction.set_scroll_offset(offset);
     }
     vec![]
 }

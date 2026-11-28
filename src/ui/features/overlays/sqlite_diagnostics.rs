@@ -25,11 +25,10 @@ impl SqliteDiagnosticsOverlay {
         state: &AppState,
         theme: &ThemePalette,
     ) -> SqliteDiagnosticsRenderMetrics {
-        let hint_bar = FooterHintBar::new(
-            sqlite_diagnostics_hints(HintSurface::Border, &KeyContext::from_state(state))
-                .into_iter()
-                .map(|hint| (hint.key, hint.short)),
-        );
+        let hint_bar = FooterHintBar::new(sqlite_diagnostics_hints(
+            HintSurface::Border,
+            &KeyContext::from_state(state),
+        ));
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),

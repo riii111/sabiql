@@ -1355,7 +1355,7 @@ mod tests {
         #[test]
         fn plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
-            state.explain.scroll_offset = 0;
+            state.explain.scroll_offset.set(0);
 
             reduce_explain(
                 &mut state,
@@ -1367,7 +1367,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, 0);
+            assert_eq!(state.explain.scroll_offset(), 0);
         }
 
         #[test]
@@ -1392,7 +1392,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, 1);
+            assert_eq!(state.explain.scroll_offset(), 1);
         }
 
         #[test]
@@ -1408,7 +1408,7 @@ mod tests {
                 .set_plan(long_plan, DatabaseType::PostgreSQL, false, 0, "Q1");
             let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height);
             let max = state.explain.line_count().saturating_sub(modal_inner);
-            state.explain.scroll_offset = max;
+            state.explain.scroll_offset.set(max);
 
             reduce_explain(
                 &mut state,
@@ -1420,13 +1420,13 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, max);
+            assert_eq!(state.explain.scroll_offset(), max);
         }
 
         #[test]
         fn compare_plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
-            state.explain.compare_scroll_offset = 0;
+            state.explain.compare_scroll_offset.set(0);
 
             reduce_explain(
                 &mut state,
@@ -1438,7 +1438,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 0);
+            assert_eq!(state.explain.compare_scroll_offset(), 0);
         }
 
         #[test]
@@ -1469,7 +1469,7 @@ mod tests {
                     },
                     Instant::now(),
                 );
-                assert_eq!(state.explain.compare_scroll_offset, step.min(max));
+                assert_eq!(state.explain.compare_scroll_offset(), step.min(max));
             }
 
             // k should immediately scroll back
@@ -1482,7 +1482,7 @@ mod tests {
                 },
                 Instant::now(),
             );
-            assert_eq!(state.explain.compare_scroll_offset, max.saturating_sub(1));
+            assert_eq!(state.explain.compare_scroll_offset(), max.saturating_sub(1));
         }
 
         #[test]
@@ -1507,7 +1507,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 1);
+            assert_eq!(state.explain.compare_scroll_offset(), 1);
         }
 
         #[test]
@@ -1524,7 +1524,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.compare_scroll_offset, 0);
+            assert_eq!(state.explain.compare_scroll_offset(), 0);
         }
     }
 
