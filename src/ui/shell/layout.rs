@@ -151,7 +151,7 @@ impl MainLayout {
         let (sqlite_diagnostics_content_line_count, sqlite_diagnostics_viewport_height) =
             match state.input_mode() {
                 InputMode::SqliteDiagnostics => {
-                    let metrics = SqliteDiagnosticsOverlay::render(frame, state, now, theme);
+                    let metrics = SqliteDiagnosticsOverlay::render(frame, state, theme);
                     (
                         Some(metrics.content_line_count),
                         Some(metrics.viewport_height),

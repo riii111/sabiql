@@ -102,7 +102,9 @@ fn finished_state(state: &AppState, run: Option<BusyRun>) -> ProgramState {
     // EXPLAIN reports its failure in the plan view rather than as a result, and a new EXPLAIN run clears the old one.
     let failed_explain =
         state.explain.error().is_some() && run.is_none_or(|run| !run.had_explain_error);
-    if failed_query || failed_explain || state.messages.last_error().is_some() {
+    // A preview that fails while table details still load is held back from the result pane until they arrive.
+    let failed_preview = state.query.has_pending_preview_error();
+    if failed_query || failed_preview || failed_explain || state.messages.last_error().is_some() {
         ProgramState::Error
     } else {
         ProgramState::Done

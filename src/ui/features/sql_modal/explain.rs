@@ -8,7 +8,6 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
@@ -109,11 +108,7 @@ pub(super) fn render(
             ),
         ]);
 
-        let scroll = state.motion.scroll_offset(
-            ScrolledPane::ExplainPlan,
-            state.explain.scroll_offset(),
-            now,
-        );
+        let scroll = state.explain.scroll_offset();
         let mut lines = vec![header, query_line];
         let shows_actual_metrics = match state.session.active_database_type_or_default() {
             DatabaseType::MySQL => state.explain.is_analyze(),

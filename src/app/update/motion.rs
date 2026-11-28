@@ -66,13 +66,13 @@ fn scrolled_pane(target: ScrollTarget) -> Option<ScrolledPane> {
         ScrollTarget::Result => ScrolledPane::Result,
         ScrollTarget::Inspector => ScrolledPane::Inspector,
         ScrollTarget::Help => ScrolledPane::Help,
-        ScrollTarget::ExplainPlan => ScrolledPane::ExplainPlan,
-        ScrollTarget::ExplainCompare => ScrolledPane::ExplainCompare,
-        ScrollTarget::SqliteDiagnostics => ScrolledPane::SqliteDiagnostics,
-        ScrollTarget::CellDetail => ScrolledPane::CellDetail,
-        ScrollTarget::RowDetail => ScrolledPane::RowDetail,
-        // Short dialogs rarely scroll, and the explorer keeps a selection that must move with its window.
-        ScrollTarget::ConnectionError
+        // Detail views keep their offset private, the other views only scroll by lines, and the explorer moves a selection.
+        ScrollTarget::ExplainPlan
+        | ScrollTarget::ExplainCompare
+        | ScrollTarget::SqliteDiagnostics
+        | ScrollTarget::CellDetail
+        | ScrollTarget::RowDetail
+        | ScrollTarget::ConnectionError
         | ScrollTarget::ConfirmDialog
         | ScrollTarget::ExplainConfirm
         | ScrollTarget::Explorer => return None,
@@ -101,12 +101,6 @@ pub(super) fn settle_before_line_step(state: &mut AppState, action: &Action) {
         ScrolledPane::Result => state.result_interaction.set_scroll_offset(drawn),
         ScrolledPane::Inspector => state.ui.inspector_scroll_offset = drawn,
         ScrolledPane::Help => state.ui.help_mut().set_scroll_offset(drawn),
-        ScrolledPane::SqliteDiagnostics => state.sqlite_diagnostics.set_scroll_offset(drawn),
-        // These views do not expose their offset, so a line step there still starts from the page jump's target.
-        ScrolledPane::ExplainPlan
-        | ScrolledPane::ExplainCompare
-        | ScrolledPane::CellDetail
-        | ScrolledPane::RowDetail => {}
     }
 }
 
@@ -120,11 +114,6 @@ fn scroll_offset(state: &AppState, pane: ScrolledPane) -> usize {
         ScrolledPane::Result => state.result_interaction.scroll_offset(),
         ScrolledPane::Inspector => state.ui.inspector_scroll_offset,
         ScrolledPane::Help => state.ui.help().scroll_offset(),
-        ScrolledPane::ExplainPlan => state.explain.scroll_offset(),
-        ScrolledPane::ExplainCompare => state.explain.compare_scroll_offset(),
-        ScrolledPane::SqliteDiagnostics => state.sqlite_diagnostics.scroll_offset(),
-        ScrolledPane::CellDetail => state.cell_detail.scroll_offset(),
-        ScrolledPane::RowDetail => state.row_detail.scroll_offset(),
     }
 }
 

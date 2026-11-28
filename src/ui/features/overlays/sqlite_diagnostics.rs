@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
@@ -7,7 +5,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::model::sqlite::diagnostics::{DiagnosticFieldKind, display_field, display_rows};
 use crate::app::update::input::keymap::{HintSurface, KeyContext, sqlite_diagnostics_hints};
 use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
@@ -26,14 +23,8 @@ impl SqliteDiagnosticsOverlay {
     pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
-        now: Instant,
         theme: &ThemePalette,
     ) -> SqliteDiagnosticsRenderMetrics {
-        let scroll_offset = state.motion.scroll_offset(
-            ScrolledPane::SqliteDiagnostics,
-            state.sqlite_diagnostics.scroll_offset(),
-            now,
-        );
         let hint_bar = FooterHintBar::new(
             sqlite_diagnostics_hints(HintSurface::Border, &KeyContext::from_state(state))
                 .into_iter()
@@ -58,14 +49,7 @@ impl SqliteDiagnosticsOverlay {
                     Style::default().fg(theme.semantic.status.warning),
                 )),
             ];
-            return render_lines(
-                frame,
-                inner,
-                scroll_offset,
-                lines,
-                viewport_width,
-                viewport_height,
-            );
+            return render_lines(frame, inner, state, lines, viewport_width, viewport_height);
         }
 
         let Some(snapshot) = state.sqlite_diagnostics.snapshot() else {
@@ -73,14 +57,7 @@ impl SqliteDiagnosticsOverlay {
                 "Diagnostics unavailable.",
                 Style::default().fg(theme.semantic.status.error),
             ))];
-            return render_lines(
-                frame,
-                inner,
-                scroll_offset,
-                lines,
-                viewport_width,
-                viewport_height,
-            );
+            return render_lines(frame, inner, state, lines, viewport_width, viewport_height);
         };
 
         let quick_check_override = state
@@ -93,27 +70,23 @@ impl SqliteDiagnosticsOverlay {
             quick_check_override
                 .or_else(|| snapshot.quick_check.is_pending().then_some("Not run.")),
         );
-        render_lines(
-            frame,
-            inner,
-            scroll_offset,
-            lines,
-            viewport_width,
-            viewport_height,
-        )
+        render_lines(frame, inner, state, lines, viewport_width, viewport_height)
     }
 }
 
 fn render_lines(
     frame: &mut Frame,
     inner: ratatui::layout::Rect,
-    scroll_offset: usize,
+    state: &AppState,
     lines: Vec<Line<'static>>,
     viewport_width: u16,
     viewport_height: usize,
 ) -> SqliteDiagnosticsRenderMetrics {
     let content_line_count = wrapped_content_line_count(&lines, viewport_width) as usize;
-    let scroll = scroll_offset.min(content_line_count.saturating_sub(viewport_height));
+    let scroll = state
+        .sqlite_diagnostics
+        .scroll_offset()
+        .min(content_line_count.saturating_sub(viewport_height));
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })

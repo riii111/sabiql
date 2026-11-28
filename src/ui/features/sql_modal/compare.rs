@@ -9,7 +9,6 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::explain_context::CompareSlot;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::motion::ScrolledPane;
 use crate::app::update::input::keymap::{HintSurface, KeyContext, sql_view_hints};
 use crate::domain::DatabaseType;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
@@ -26,11 +25,7 @@ pub(super) fn render(
 ) -> u16 {
     let can_yank = state.explain.can_yank_compare();
     let (left, right) = state.explain.compare_slots();
-    let scroll_offset = state.motion.scroll_offset(
-        ScrolledPane::ExplainCompare,
-        state.explain.compare_scroll_offset(),
-        now,
-    );
+    let scroll_offset = state.explain.compare_scroll_offset();
 
     let mut lines: Vec<Line> = Vec::new();
     let mut flash_mask: Vec<bool> = Vec::new();

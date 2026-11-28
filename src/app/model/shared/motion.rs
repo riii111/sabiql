@@ -15,11 +15,6 @@ pub enum ScrolledPane {
     Result,
     Inspector,
     Help,
-    ExplainPlan,
-    ExplainCompare,
-    SqliteDiagnostics,
-    CellDetail,
-    RowDetail,
 }
 
 #[derive(Debug, Clone, Copy)]

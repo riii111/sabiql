@@ -211,6 +211,12 @@ impl QueryExecution {
             .is_some_and(|pending| pending.generation == generation)
     }
 
+    pub fn has_pending_preview_error(&self) -> bool {
+        self.pending_preview
+            .as_ref()
+            .is_some_and(|pending| pending.result.is_error())
+    }
+
     pub(crate) fn take_pending_preview(&mut self, generation: u64) -> Option<PendingPreview> {
         if self.has_pending_preview(generation) {
             self.pending_preview.take()
@@ -581,6 +587,49 @@ mod tests {
 
             assert_eq!(p.current_page(), 3);
             assert!(p.reached_end());
+        }
+    }
+
+    mod pending_preview_error {
+        use super::*;
+
+        fn pending(state: &mut QueryExecution, result: QueryResult) {
+            state.defer_preview(Arc::new(result), 0, None, false);
+        }
+
+        #[test]
+        fn failed_preview_held_back_is_reported() {
+            let mut state = QueryExecution::default();
+
+            pending(
+                &mut state,
+                QueryResult::error(
+                    "SELECT 1".to_string(),
+                    "boom".to_string(),
+                    1,
+                    QuerySource::Preview,
+                ),
+            );
+
+            assert!(state.has_pending_preview_error());
+        }
+
+        #[test]
+        fn successful_preview_held_back_is_not_an_error() {
+            let mut state = QueryExecution::default();
+
+            pending(
+                &mut state,
+                QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["id".to_string()],
+                    vec![],
+                    1,
+                    QuerySource::Preview,
+                ),
+            );
+
+            assert!(!state.has_pending_preview_error());
         }
     }
 }
