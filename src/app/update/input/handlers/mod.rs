@@ -310,7 +310,7 @@ mod tests {
         assert!(matches!(first, Action::BeginKeySequence(Prefix::G)));
         route(&mut state, first, Instant::now(), &services);
         assert_eq!(
-            state.ui.key_sequence(),
+            state.ui.key_sequence,
             KeySequenceState::WaitingSecondKey(Prefix::G)
         );
         let second = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
@@ -322,18 +322,16 @@ mod tests {
             }
         ));
         route(&mut state, second, Instant::now(), &services);
-        assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
+        assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
 
         let first = handle_key_event(KeyCombo::plain(Key::Char('g')), &state);
         route(&mut state, first, Instant::now(), &services);
         let cancel = handle_key_event(KeyCombo::ctrl(Key::Char('g')), &state);
         assert!(matches!(cancel, Action::CancelKeySequence));
         route(&mut state, cancel, Instant::now(), &services);
-        assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
+        assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
 
-        state
-            .ui
-            .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
+        state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);
         state.json_detail.enter_search();
         assert!(matches!(
             handle_key_event(KeyCombo::plain(Key::Char('g')), &state),

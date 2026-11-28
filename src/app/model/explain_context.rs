@@ -139,14 +139,6 @@ impl ExplainContext {
         self.compare_viewport_height = Some(height);
     }
 
-    pub fn scroll_plan_to(&mut self, offset: usize) {
-        self.scroll_offset = offset;
-    }
-
-    pub fn scroll_compare_to(&mut self, offset: usize) {
-        self.compare_scroll_offset = offset;
-    }
-
     pub fn reset_for_new_run(&mut self) {
         let left = self.left.take();
         let right = self.right.take();
@@ -330,8 +322,8 @@ mod tests {
             0,
             "B",
         );
-        ctx.scroll_plan_to(10);
-        ctx.scroll_compare_to(5);
+        ctx.scroll_offset = 10;
+        ctx.compare_scroll_offset = 5;
 
         ctx.reset_for_new_run();
 

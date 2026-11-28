@@ -18,10 +18,10 @@ use crate::theme::{ThemePalette, palette_for};
 const PREVIEW_PANEL_INNER_WIDTH: usize = 28;
 const PREVIEW_PANEL_TITLE: &str = " Focused panel ";
 
-pub struct SettingsOverlay;
+pub(crate) struct SettingsOverlay;
 
 impl SettingsOverlay {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
+    pub(crate) fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(60),

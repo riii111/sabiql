@@ -372,6 +372,7 @@ impl ConnectionConfig {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub fn as_postgres(&self) -> Option<&PostgresConnectionConfig> {
         match self {
             Self::PostgreSQL(config) => Some(config),
@@ -386,6 +387,7 @@ impl ConnectionConfig {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub fn as_mysql(&self) -> Option<&MySqlConnectionConfig> {
         match self {
             Self::MySQL(config) => Some(config),

@@ -11,7 +11,7 @@ pub(in crate::update) fn set_focused_pane(state: &mut AppState, pane: FocusedPan
             state.modal.set_mode(InputMode::Normal);
         }
     }
-    state.ui.set_focused_pane(pane);
+    state.ui.focused_pane = pane;
     vec![]
 }
 
@@ -35,26 +35,6 @@ pub(in crate::update) fn toggle_read_only(state: &mut AppState) -> Vec<Effect> {
     } else {
         state.session.enable_read_only();
     }
-    vec![]
-}
-
-pub(in crate::update) fn inspector_next_tab(state: &mut AppState) -> Vec<Effect> {
-    state.ui.set_inspector_tab(
-        state
-            .session
-            .active_engine_feature_profile()
-            .next_inspector_tab(state.ui.inspector_tab()),
-    );
-    vec![]
-}
-
-pub(in crate::update) fn inspector_prev_tab(state: &mut AppState) -> Vec<Effect> {
-    state.ui.set_inspector_tab(
-        state
-            .session
-            .active_engine_feature_profile()
-            .prev_inspector_tab(state.ui.inspector_tab()),
-    );
     vec![]
 }
 
@@ -124,7 +104,7 @@ mod tests {
         fn next_tab_uses_session_capabilities() {
             let mut state = AppState::new("test".to_string());
             activate_sqlite_connection(&mut state);
-            state.ui.set_inspector_tab(InspectorTab::Info);
+            state.ui.inspector_tab = InspectorTab::Info;
 
             route(
                 &mut state,
@@ -133,14 +113,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Columns);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Columns);
         }
 
         #[test]
         fn prev_tab_uses_session_capabilities() {
             let mut state = AppState::new("test".to_string());
             activate_sqlite_connection(&mut state);
-            state.ui.set_inspector_tab(InspectorTab::Info);
+            state.ui.inspector_tab = InspectorTab::Info;
 
             route(
                 &mut state,
@@ -149,7 +129,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Ddl);
         }
     }
 }

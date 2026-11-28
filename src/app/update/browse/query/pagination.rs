@@ -107,17 +107,6 @@ pub(in crate::update) fn csv_export_failed(
     vec![]
 }
 
-pub(in crate::update) fn open_folder_failed(
-    state: &mut AppState,
-    error: Arc<std::io::Error>,
-) -> Vec<Effect> {
-    state
-        .messages
-        .set_error(format!("Failed to open folder: {error}"));
-
-    vec![]
-}
-
 pub(in crate::update) fn result_next_page(state: &mut AppState, now: Instant) -> Vec<Effect> {
     if reject_pending_mysql_connection_probe(state) {
         return vec![];
@@ -428,7 +417,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result_with_two_columns(PREVIEW_PAGE_SIZE));
-            state.query.pagination.set_current_page(0);
+            state.query.pagination.set_page_result(0, false);
             state.result_interaction.activate_cell(1, 1);
             state.result_interaction.stage_row(1);
 

@@ -1,7 +1,7 @@
-pub const MIN_COL_WIDTH: u16 = 4;
-pub const PADDING: u16 = 2;
+pub(crate) const MIN_COL_WIDTH: u16 = 4;
+pub(crate) const PADDING: u16 = 2;
 
-pub fn calculate_header_min_widths<S: AsRef<str>>(headers: &[S]) -> Vec<u16> {
+pub(crate) fn calculate_header_min_widths<S: AsRef<str>>(headers: &[S]) -> Vec<u16> {
     use unicode_width::UnicodeWidthStr;
 
     headers
@@ -12,7 +12,7 @@ pub fn calculate_header_min_widths<S: AsRef<str>>(headers: &[S]) -> Vec<u16> {
 
 // Counts display cells, not chars: CJK text renders two cells per char and
 // would otherwise overflow its column and get clipped without an ellipsis.
-pub fn truncate_to_width_with(s: &str, max_width: usize, ellipsis: &str) -> String {
+pub(crate) fn truncate_to_width_with(s: &str, max_width: usize, ellipsis: &str) -> String {
     use unicode_width::UnicodeWidthStr;
 
     if UnicodeWidthStr::width(s) <= max_width {
@@ -30,11 +30,11 @@ pub fn truncate_to_width_with(s: &str, max_width: usize, ellipsis: &str) -> Stri
     truncated
 }
 
-pub fn truncate_to_width(s: &str, max_width: usize) -> String {
+pub(crate) fn truncate_to_width(s: &str, max_width: usize) -> String {
     truncate_to_width_with(s, max_width, "...")
 }
 
-pub fn take_within_width(s: &str, budget: usize) -> String {
+pub(crate) fn take_within_width(s: &str, budget: usize) -> String {
     use unicode_width::UnicodeWidthChar;
 
     let mut taken = String::new();
@@ -50,7 +50,7 @@ pub fn take_within_width(s: &str, budget: usize) -> String {
     taken
 }
 
-pub fn wrapped_line_count(text: &str, width: u16) -> u16 {
+pub(crate) fn wrapped_line_count(text: &str, width: u16) -> u16 {
     use unicode_width::UnicodeWidthStr;
 
     if width == 0 {

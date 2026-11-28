@@ -613,7 +613,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(
-                build_mysql_dsn(profile.mysql_config().unwrap()),
+                build_mysql_dsn(profile.config.as_mysql().unwrap()),
                 "mysql://us%20er%2541:sec%252Fret@db.example:3307/app?ssl-mode=PREFERRED"
             );
         }

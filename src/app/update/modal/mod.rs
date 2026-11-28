@@ -70,6 +70,7 @@ mod tests {
 
     mod help {
         use super::*;
+        use crate::model::shared::text_input::TextEdit;
 
         fn open_help(state: &mut AppState) {
             route(
@@ -91,7 +92,10 @@ mod tests {
         fn escape_returns_to_help_origin_with_filter() {
             let mut state = create_test_state();
             open_help(&mut state);
-            state.ui.help_mut().insert_filter_char('c');
+            state
+                .ui
+                .help_mut()
+                .apply_filter_edit(TextEdit::Insert('c'), None);
 
             let effects = route(
                 &mut state,
@@ -213,7 +217,7 @@ mod tests {
             #[test]
             fn opens_with_current_theme() {
                 let mut state = create_test_state();
-                state.ui.set_theme(ThemeId::Light);
+                state.ui.theme_id = ThemeId::Light;
 
                 let effects = route(
                     &mut state,
@@ -246,7 +250,7 @@ mod tests {
                 );
 
                 assert_eq!(state.settings.selected_theme(), ThemeId::Light);
-                assert_eq!(state.ui.theme_id(), ThemeId::Default);
+                assert_eq!(state.ui.theme_id, ThemeId::Default);
             }
 
             #[rstest]
@@ -271,7 +275,7 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
                 assert_eq!(state.settings.selected_theme(), ThemeId::Default);
-                assert_eq!(state.ui.theme_id(), ThemeId::Default);
+                assert_eq!(state.ui.theme_id, ThemeId::Default);
                 assert!(effects.is_empty());
             }
 
@@ -312,7 +316,7 @@ mod tests {
                 );
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
-                assert_eq!(state.ui.theme_id(), ThemeId::Default);
+                assert_eq!(state.ui.theme_id, ThemeId::Default);
                 assert_eq!(state.settings.saved_icon_mode(), IconMode::Unicode);
                 assert!(matches!(
                     effects.as_slice(),
@@ -456,7 +460,7 @@ mod tests {
                     &AppServices::stub(),
                 );
 
-                assert_eq!(state.ui.theme_id(), ThemeId::Light);
+                assert_eq!(state.ui.theme_id, ThemeId::Light);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
                 assert_eq!(state.settings.saved_icon_mode(), IconMode::Unicode);
                 assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Ide);

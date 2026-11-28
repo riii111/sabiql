@@ -31,7 +31,7 @@ pub(in crate::update) fn sql_modal_cancel_confirm(state: &mut AppState) -> Vec<E
         SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
     ) {
         state.sql_modal.cancel_confirmation();
-        state.ui.set_key_sequence(KeySequenceState::Idle);
+        state.ui.key_sequence = KeySequenceState::Idle;
     }
     vec![]
 }

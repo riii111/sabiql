@@ -5,7 +5,7 @@ use crate::model::connection::error::test_support;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::ui_state::FocusMode;
+
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::model::sql_editor::modal::SqlModalTab;
 use crate::policy::write::sql_risk::AcknowledgeReason;
@@ -62,7 +62,7 @@ fn check_state(state: &mut AppState) {
                     Trigger::Text | Trigger::AnyText => (KeyCombo::plain(Key::Char('x')), None),
                     Trigger::Command { .. } => continue,
                 };
-                let previous = state.ui.key_sequence();
+                let previous = state.ui.key_sequence;
                 if let Some(prefix) = sequence {
                     if previous.pending_prefix().is_none() {
                         let start = handle_event(
@@ -75,12 +75,10 @@ fn check_state(state: &mut AppState) {
                             context.label()
                         );
                     }
-                    state
-                        .ui
-                        .set_key_sequence(KeySequenceState::WaitingSecondKey(prefix));
+                    state.ui.key_sequence = KeySequenceState::WaitingSecondKey(prefix);
                 }
                 let actual = handle_event(InputEvent::Key(combo), state);
-                state.ui.set_key_sequence(previous);
+                state.ui.key_sequence = previous;
                 match &binding.output {
                     Output::Action(expected) => assert_eq!(
                         format!("{actual:?}"),
@@ -306,9 +304,9 @@ fn visible_bindings_match_event_entry_in_representative_states() {
                 check_state(&mut state);
                 match mode {
                     InputMode::Normal => {
-                        state.ui.set_focused_pane(FocusedPane::Inspector);
+                        state.ui.focused_pane = FocusedPane::Inspector;
                         check_state(&mut state);
-                        state.ui.set_focused_pane(FocusedPane::Result);
+                        state.ui.focused_pane = FocusedPane::Result;
                         state
                             .query
                             .set_current_result(Arc::new(QueryResult::success(
@@ -334,15 +332,11 @@ fn visible_bindings_match_event_entry_in_representative_states() {
                             .result_interaction
                             .replace_cell_edit_draft("after".to_string());
                         check_state(&mut state);
-                        state
-                            .ui
-                            .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z));
+                        state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
                         check_state(&mut state);
-                        state.ui.set_key_sequence(KeySequenceState::Idle);
+                        state.ui.key_sequence = KeySequenceState::Idle;
                         state.session.enable_read_only();
-                        state
-                            .ui
-                            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
+                        state.ui.toggle_focus();
                         state.connection_error.set_error(test_support::from_parts(
                             "Connection failed",
                             "Details",
@@ -492,7 +486,7 @@ fn conditional_bindings_win_at_the_event_entry() {
         KeymapPreset::Default,
         InputMode::Normal,
     );
-    result.ui.set_focused_pane(FocusedPane::Result);
+    result.ui.focused_pane = FocusedPane::Result;
     result.connection_error.set_error(test_support::from_parts(
         "Connection failed",
         "Details",
@@ -523,7 +517,7 @@ fn repeated_operators_and_prefixes_reach_their_state_transitions() {
         KeymapPreset::Default,
         InputMode::Normal,
     );
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.ui.focused_pane = FocusedPane::Result;
     state
         .query
         .set_current_result(Arc::new(QueryResult::success(
@@ -551,9 +545,9 @@ fn repeated_operators_and_prefixes_reach_their_state_transitions() {
     assert!(!state.result_interaction.is_delete_operator_pending());
     press(&mut state, 'z', &services);
     assert_eq!(
-        state.ui.key_sequence(),
+        state.ui.key_sequence,
         KeySequenceState::WaitingSecondKey(Prefix::Z)
     );
     press(&mut state, 't', &services);
-    assert_eq!(state.ui.key_sequence(), KeySequenceState::Idle);
+    assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
 }

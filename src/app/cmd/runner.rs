@@ -425,11 +425,10 @@ mod tests {
                     "public".to_string(),
                     "abcdefghij".to_string(),
                     Some(0),
-                    false,
                 )];
                 metadata
             })));
-            state.ui.set_explorer_horizontal_offset(20);
+            state.ui.explorer_horizontal_offset = 20;
 
             let mut renderer = ExplorerWidthRenderer {
                 explorer_content_width: 8,
@@ -445,7 +444,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.explorer_horizontal_offset(), 9);
+            assert_eq!(state.ui.explorer_horizontal_offset, 9);
         }
 
         #[tokio::test]
@@ -483,7 +482,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.json_detail_editor_visible_rows(), 2);
+            assert_eq!(state.ui.json_detail_editor_visible_rows, 2);
             assert_eq!(state.json_detail.editor().cursor_to_position().0, 3);
             assert_eq!(state.json_detail.editor().scroll_row(), 2);
         }

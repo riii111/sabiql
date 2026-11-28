@@ -413,9 +413,7 @@ mod tests {
 
         let mut state = AppState::new("test".to_string());
         let idle = HelpDocument::new(KeyContext::from_state(&state), "", 0);
-        state
-            .ui
-            .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::G));
+        state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::G);
         let pending = HelpDocument::new(KeyContext::from_state(&state), "", 0);
         assert_eq!(&idle.sections()[1..], &pending.sections()[1..]);
     }
@@ -473,7 +471,7 @@ mod tests {
         }
 
         press(&mut state, Key::Esc);
-        state.ui.set_focused_pane(FocusedPane::Result);
+        state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.activate_cell(0, 0);
         state
             .result_interaction
@@ -542,7 +540,7 @@ mod tests {
         table.columns = vec![id, selected];
         table.primary_key = Some(vec!["id".to_string()]);
         state.session.set_table_detail_raw(Some(table));
-        state.ui.set_focused_pane(FocusedPane::Result);
+        state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.activate_cell(0, selected_column);
         state
     }

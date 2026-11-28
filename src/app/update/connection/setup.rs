@@ -43,14 +43,6 @@ pub(in crate::update) fn connection_edit_loaded(
     cancel_effects
 }
 
-pub(in crate::update) fn connection_edit_load_failed(
-    state: &mut AppState,
-    error: String,
-) -> Vec<Effect> {
-    state.messages.set_error(error);
-    vec![]
-}
-
 pub(in crate::update) fn close_modal_connection_setup(state: &mut AppState) -> Vec<Effect> {
     state.session.cancel_connection_save_and_disconnect();
     let cancel_effects = cancel_connection_task_effects(state);
@@ -74,31 +66,6 @@ pub(in crate::update) fn connection_setup_prev_field(state: &mut AppState) -> Ve
     let setup = &mut state.connection_setup;
     validate_field(setup, setup.focused_field());
     setup.focus_prev_field();
-    vec![]
-}
-
-pub(in crate::update) fn connection_setup_toggle_dropdown(state: &mut AppState) -> Vec<Effect> {
-    state.connection_setup.toggle_focused_dropdown();
-    vec![]
-}
-
-pub(in crate::update) fn connection_setup_dropdown_next(state: &mut AppState) -> Vec<Effect> {
-    state.connection_setup.dropdown_next();
-    vec![]
-}
-
-pub(in crate::update) fn connection_setup_dropdown_prev(state: &mut AppState) -> Vec<Effect> {
-    state.connection_setup.dropdown_prev();
-    vec![]
-}
-
-pub(in crate::update) fn connection_setup_dropdown_confirm(state: &mut AppState) -> Vec<Effect> {
-    state.connection_setup.confirm_dropdown();
-    vec![]
-}
-
-pub(in crate::update) fn connection_setup_dropdown_cancel(state: &mut AppState) -> Vec<Effect> {
-    state.connection_setup.cancel_dropdown();
     vec![]
 }
 
@@ -1119,7 +1086,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     None,
-                    false,
                 )];
                 metadata
             }));
@@ -1184,7 +1150,6 @@ mod tests {
                     "public".to_string(),
                     "users".to_string(),
                     None,
-                    false,
                 )];
                 metadata
             }));
@@ -1211,7 +1176,6 @@ mod tests {
                             "main".to_string(),
                             "old_table".to_string(),
                             None,
-                            false,
                         )];
                         metadata
                     })),
@@ -1238,7 +1202,7 @@ mod tests {
         #[test]
         fn save_completed_clears_er_state_from_previous_connection() {
             let mut state = AppState::new("test".to_string());
-            state.ui.set_pending_er_picker(true);
+            state.ui.request_er_picker_after_metadata();
             let _ = state.er_preparation.start_waiting_run();
             state
                 .table_prefetch

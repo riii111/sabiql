@@ -433,7 +433,7 @@ mod tests {
             store.expect_save().once().returning(|profile| {
                 assert_eq!(profile.database_type(), DatabaseType::MySQL);
                 assert_eq!(
-                    profile.mysql_config().unwrap().database.as_deref(),
+                    profile.config.as_mysql().unwrap().database.as_deref(),
                     Some("app")
                 );
                 Ok(())

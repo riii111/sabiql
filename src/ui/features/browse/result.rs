@@ -25,7 +25,7 @@ use crate::primitives::utils::text_utils::{
 };
 use crate::theme::ThemePalette;
 
-pub struct ResultPane;
+pub(crate) struct ResultPane;
 
 struct EditingCellView<'a> {
     row: usize,
@@ -49,14 +49,14 @@ struct ResultTableParams<'a> {
 }
 
 impl ResultPane {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
         now: Instant,
         theme: &ThemePalette,
     ) -> (ViewportPlan, ColumnWidthsCache) {
-        let is_focused = state.ui.focused_pane() == FocusedPane::Result;
+        let is_focused = state.ui.focused_pane == FocusedPane::Result;
         let should_highlight = state
             .query
             .result_highlight_until()
@@ -93,8 +93,8 @@ impl ResultPane {
                     ResultTableParams {
                         scroll_offset: state.result_interaction.scroll_offset(),
                         horizontal_offset: state.result_interaction.horizontal_offset(),
-                        stored_plan: state.ui.result_viewport_plan(),
-                        stored_cache: state.ui.result_widths_cache(),
+                        stored_plan: &state.ui.result_viewport_plan,
+                        stored_cache: &state.ui.result_widths_cache,
                         result_generation: state.query.result_generation(),
                         selection: state.result_interaction.selection(),
                         editing_cell,

@@ -26,10 +26,10 @@ mod completion;
 mod editor;
 mod status;
 
-pub struct SqlModal;
+pub(crate) struct SqlModal;
 
 impl SqlModal {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
         now: Instant,

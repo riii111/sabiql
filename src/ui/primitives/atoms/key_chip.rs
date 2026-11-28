@@ -3,7 +3,7 @@ use ratatui::text::Span;
 
 use crate::theme::ThemePalette;
 
-pub fn key_chip(key: &str, theme: &ThemePalette) -> Span<'static> {
+pub(crate) fn key_chip(key: &str, theme: &ThemePalette) -> Span<'static> {
     Span::styled(
         format!(" {key} "),
         Style::default()
@@ -13,7 +13,7 @@ pub fn key_chip(key: &str, theme: &ThemePalette) -> Span<'static> {
     )
 }
 
-pub fn key_text(key: &str, theme: &ThemePalette) -> Span<'static> {
+pub(crate) fn key_text(key: &str, theme: &ThemePalette) -> Span<'static> {
     Span::styled(
         key.to_string(),
         Style::default().fg(theme.semantic.text.accent),

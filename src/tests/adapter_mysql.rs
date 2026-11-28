@@ -114,7 +114,8 @@ mod connection {
         assert!(trusted_config.server_public_key_path.is_some());
         let no_key_config = trusted_config.clone().with_server_public_key_path(None);
         let no_key_dsn = mysql_profile("mysql-caching-sha2-public-key-without-key", no_key_config)
-            .mysql_config()
+            .config
+            .as_mysql()
             .unwrap()
             .clone();
         let error = adapter
@@ -133,7 +134,7 @@ mod connection {
         }
 
         let trusted_profile = mysql_profile("mysql-caching-sha2-public-key", trusted_config);
-        let dsn = trusted_profile.mysql_config().unwrap().clone();
+        let dsn = trusted_profile.config.as_mysql().unwrap().clone();
 
         adapter.probe(&dsn).await.unwrap();
         let result = adapter
@@ -153,7 +154,7 @@ mod connection {
         let config = mysql_tls_test_config();
         let profile = mysql_profile("mysql-tls-integration", config);
         let adapter = MySqlAdapter::new();
-        let dsn = profile.mysql_config().unwrap().clone();
+        let dsn = profile.config.as_mysql().unwrap().clone();
 
         adapter.probe(&dsn).await.unwrap();
         let result = adapter
@@ -175,7 +176,7 @@ mod connection {
         config.ssl_key = None;
         let profile = mysql_profile("mysql-tls-missing-client-certificate", config);
         let adapter = MySqlAdapter::new();
-        let dsn = profile.mysql_config().unwrap().clone();
+        let dsn = profile.config.as_mysql().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
@@ -198,7 +199,7 @@ mod connection {
         config.ssl_ca = config.ssl_cert.clone();
         let profile = mysql_profile("mysql-tls-wrong-ca", config);
         let adapter = MySqlAdapter::new();
-        let dsn = profile.mysql_config().unwrap().clone();
+        let dsn = profile.config.as_mysql().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&error).summary(),
@@ -214,7 +215,7 @@ mod connection {
         config.ssl_mode = MySqlSslMode::VerifyIdentity;
         let profile = mysql_profile("mysql-tls-wrong-host", config);
         let adapter = MySqlAdapter::new();
-        let dsn = profile.mysql_config().unwrap().clone();
+        let dsn = profile.config.as_mysql().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
@@ -234,7 +235,7 @@ mod connection {
         let mut permission_config = base_config.clone();
         permission_config.database = Some("mysql".to_string());
         let permission_profile = mysql_profile("mysql-permission", permission_config);
-        let permission_dsn = permission_profile.mysql_config().unwrap().clone();
+        let permission_dsn = permission_profile.config.as_mysql().unwrap().clone();
         let permission_error = adapter.probe(&permission_dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&permission_error).summary(),
@@ -246,7 +247,7 @@ mod connection {
         missing_config.username = "root".to_string();
         missing_config.password = "root".to_string();
         let missing_profile = mysql_profile("mysql-missing-database", missing_config);
-        let missing_dsn = missing_profile.mysql_config().unwrap().clone();
+        let missing_dsn = missing_profile.config.as_mysql().unwrap().clone();
         let missing_error = adapter.probe(&missing_dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&missing_error).summary(),
@@ -256,7 +257,7 @@ mod connection {
         let mut auth_config = mysql_tls_config();
         auth_config.password = "wrong-password".to_string();
         let auth_profile = mysql_profile("mysql-authentication", auth_config);
-        let auth_dsn = auth_profile.mysql_config().unwrap().clone();
+        let auth_dsn = auth_profile.config.as_mysql().unwrap().clone();
         let auth_error = adapter.probe(&auth_dsn).await.unwrap_err();
         let auth_info = ConnectionErrorInfo::from_db_operation_error(&auth_error);
         assert_eq!(

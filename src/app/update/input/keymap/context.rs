@@ -187,7 +187,7 @@ impl KeyContext {
             mode: state.input_mode(),
             json_mode: state.json_detail.mode(),
             policy: FeaturePolicy::new(&state.session.active_engine_feature_profile()),
-            pending_prefix: state.ui.key_sequence().pending_prefix(),
+            pending_prefix: state.ui.key_sequence.pending_prefix(),
             history_available: state.can_open_query_history(),
             scope: match state.input_mode() {
                 InputMode::Normal => browse_scope(state),
@@ -668,13 +668,13 @@ fn is_dropdown_field(field: ConnectionField) -> bool {
 fn browse_scope(state: &AppState) -> Scope {
     let connected = state.session.endpoint().is_some()
         && state.session.pending_mysql_connection_probe().is_none();
-    let pane = if state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result {
+    let pane = if state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result {
         if state.result_interaction.selection().mode() == ResultNavMode::CellActive {
             BrowsePane::ResultCell
         } else {
             BrowsePane::ResultScroll
         }
-    } else if state.ui.focused_pane() == FocusedPane::Inspector {
+    } else if state.ui.focused_pane == FocusedPane::Inspector {
         BrowsePane::Inspector
     } else {
         BrowsePane::Explorer
@@ -685,7 +685,7 @@ fn browse_scope(state: &AppState) -> Scope {
         csv_available: connected && state.can_request_csv_export(),
         pane,
         connection_error: state.connection_error.has_error(),
-        inspector_ddl: state.ui.inspector_tab() == InspectorTab::Ddl,
+        inspector_ddl: state.ui.inspector_tab == InspectorTab::Ddl,
         staged_delete: !state.result_interaction.staged_delete_rows().is_empty(),
         draft: state.result_interaction.cell_edit().has_pending_draft(),
         yank_pending: state.result_interaction.is_yank_operator_pending(),

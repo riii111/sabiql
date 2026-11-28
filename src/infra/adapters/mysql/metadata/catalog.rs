@@ -562,7 +562,7 @@ fn parse_fk_action(value: &QueryValue, field: &str) -> Result<FkAction, DbOperat
 }
 
 pub(super) fn table_summary(table: MySqlTableMetadata) -> TableSummary {
-    TableSummary::new(table.schema, table.name, table.row_count_estimate, false).with_kind_info(
+    TableSummary::new(table.schema, table.name, table.row_count_estimate).with_kind_info(
         TableKindInfo {
             kind: table.kind,
             is_strict: false,

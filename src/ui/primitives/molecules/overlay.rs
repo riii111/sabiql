@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders};
 
 use crate::theme::ThemePalette;
 
-pub fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect {
+pub(crate) fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect {
     let [area] = Layout::horizontal([width]).flex(Flex::Center).areas(area);
     let [area] = Layout::vertical([height]).flex(Flex::Center).areas(area);
     area
@@ -15,7 +15,7 @@ pub fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect 
 
 // Uses DIM + dark foreground to suppress background borders
 // that would otherwise appear adjacent to modal borders.
-pub fn render_scrim(frame: &mut Frame, theme: &ThemePalette) {
+pub(crate) fn render_scrim(frame: &mut Frame, theme: &ThemePalette) {
     let buf = frame.buffer_mut();
     let area = buf.area;
     buf.set_style(
@@ -26,7 +26,7 @@ pub fn render_scrim(frame: &mut Frame, theme: &ThemePalette) {
     );
 }
 
-pub fn modal_block(
+pub(crate) fn modal_block(
     title: String,
     hint: Line<'static>,
     border_color: Color,

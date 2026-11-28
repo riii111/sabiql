@@ -2,7 +2,6 @@ use crate::catalog::HelpDocument;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::picker::sanitize_filter_text;
 use crate::update::action::{ScrollAmount, ScrollDirection};
 use crate::update::input::keymap::KeyContext;
 
@@ -37,7 +36,7 @@ fn scroll_help_horizontally(state: &mut AppState, direction: ScrollDirection) {
     }
 }
 
-fn close_help(state: &mut AppState) {
+pub(in crate::update) fn close_help(state: &mut AppState) {
     state.modal.pop_mode();
     state.ui.help_mut().close();
 }
@@ -50,29 +49,6 @@ pub(in crate::update) fn toggle_help(state: &mut AppState) -> Vec<Effect> {
         state.ui.help_mut().open(origin);
         state.modal.push_mode(InputMode::Help);
     }
-    vec![]
-}
-
-pub(in crate::update) fn close_modal_help(state: &mut AppState) -> Vec<Effect> {
-    close_help(state);
-    vec![]
-}
-
-pub(in crate::update) fn paste_help_filter(state: &mut AppState, text: String) -> Vec<Effect> {
-    state
-        .ui
-        .help_mut()
-        .edit_filter(|input| input.insert_str(&sanitize_filter_text(&text)));
-    vec![]
-}
-
-pub(in crate::update) fn enter_help_filter(state: &mut AppState) -> Vec<Effect> {
-    state.ui.help_mut().enter_filter_editing();
-    vec![]
-}
-
-pub(in crate::update) fn exit_help_filter(state: &mut AppState) -> Vec<Effect> {
-    state.ui.help_mut().exit_filter_editing();
     vec![]
 }
 

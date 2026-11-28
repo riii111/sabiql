@@ -11,6 +11,7 @@ impl PostgresAdapter {
         Self { timeout_secs: 30 }
     }
 
+    #[cfg(feature = "test-support")]
     pub fn with_timeout(timeout_secs: u64) -> Self {
         Self { timeout_secs }
     }

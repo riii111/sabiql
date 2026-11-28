@@ -48,7 +48,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         },
     };
 
-    state.ui.set_focused_pane(FocusedPane::Explorer);
+    state.ui.focused_pane = FocusedPane::Explorer;
     let shell_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_custom_focus_border = has_cell(&shell_buffer, |cell| {
         cell.symbol() == "─" && cell.fg == theme.semantic.surface.focus_border
@@ -140,7 +140,7 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
@@ -186,7 +186,7 @@ fn light_theme_applies_shell_and_sql_colors() {
     let now = test_instant();
     let mut terminal = create_test_terminal();
 
-    state.ui.set_focused_pane(FocusedPane::Explorer);
+    state.ui.focused_pane = FocusedPane::Explorer;
     let shell_buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &LIGHT_THEME);
     let has_light_focus_border = has_cell(&shell_buffer, |cell| {
