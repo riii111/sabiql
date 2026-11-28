@@ -912,7 +912,7 @@ mod tests {
             assert_eq!(input.cursor(), 3);
             input.insert_char('!');
             assert_eq!(input.content(), "👩‍💻!x");
-            input.move_cursor(CursorMove::Home);
+            input.move_cursor(CursorMove::LineStart);
             input.delete();
             assert_eq!(input.content(), "!x");
         }
