@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::motion::ScrolledPane;
-use crate::update::action::{Action, ScrollAmount, ScrollTarget, ScrollToCursorTarget};
+use crate::update::action::{Action, ScrollAmount, ScrollTarget};
 
 /// What was on screen before an action, so transitions start from it.
 pub(super) struct MotionProbe {
@@ -74,10 +74,6 @@ fn animated_scroll_pane(state: &AppState, action: &Action) -> Option<ScrolledPan
             | ScrollTarget::ExplainConfirm
             | ScrollTarget::Explorer => return None,
         },
-        Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Result,
-            ..
-        } => ScrolledPane::Result,
         _ => return None,
     };
     is_animatable(state, pane).then_some(pane)
@@ -108,7 +104,9 @@ mod tests {
     use super::*;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::ui_state::FocusMode;
+    use crate::services::AppServices;
     use crate::update::action::ScrollDirection;
+    use crate::update::reducer::reduce;
 
     fn motion_state() -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -319,20 +317,6 @@ mod tests {
     }
 
     #[test]
-    fn background_update_keeps_the_scroll_animation() {
-        let mut state = motion_state();
-        let now = Instant::now();
-        let probe = MotionProbe::capture(&state, &page_down());
-        state.result_interaction.set_scroll_offset(20);
-        probe.record(&mut state, now);
-
-        let probe = MotionProbe::capture(&state, &Action::None);
-        probe.record(&mut state, now);
-
-        assert_eq!(state.motion.scroll_offset(ScrolledPane::Result, 20, now), 0);
-    }
-
-    #[test]
     fn animation_tick_keeps_the_scroll_animation() {
         let mut state = motion_state();
         let now = Instant::now();
@@ -340,8 +324,7 @@ mod tests {
         state.result_interaction.set_scroll_offset(20);
         probe.record(&mut state, now);
 
-        let probe = MotionProbe::capture(&state, &Action::Render);
-        probe.record(&mut state, now);
+        reduce(&mut state, Action::Render, now, &AppServices::stub());
 
         assert_eq!(state.motion.scroll_offset(ScrolledPane::Result, 20, now), 0);
     }

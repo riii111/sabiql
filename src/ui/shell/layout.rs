@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::widgets::Block;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
@@ -9,6 +10,7 @@ use crate::app::model::shared::render_output::{
     BrowseLayout, ConfirmPreviewLayout, DetailLayout, ExplorerLayout, InputLayout, InspectorLayout,
     OverlayLayout, PaneArea, PaneAreas, PickerLayouts, ResultLayout,
 };
+use crate::app::model::shared::viewport::ViewportPlan;
 use crate::app::ports::outbound::{CellDetailViewport, RenderOutput};
 use crate::app::services::AppServices;
 use crate::features::browse::cell_detail::{CellDetail, CellDetailRenderMetrics};
@@ -236,14 +238,15 @@ impl MainLayout {
         let [full_left, full_right] =
             Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
                 .areas(main_area);
-        let [full_inspector, full_result] =
+        let [full_inspector, _] =
             Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(full_right);
-        let explorer_width = collapsed_length(full_left.width, collapse);
-        let inspector_height = collapsed_length(full_inspector.height, collapse);
-
-        let (left_area, right_area) = split_columns(main_area, explorer_width);
-        let (inspector_area, result_area) = split_rows(right_area, inspector_height);
+        let (left_area, right_area) =
+            split_columns(main_area, collapsed_length(full_left.width, collapse));
+        let (inspector_area, result_area) = split_rows(
+            right_area,
+            collapsed_length(full_inspector.height, collapse),
+        );
 
         let explorer_content_width =
             left_area.map(|area| Explorer::render(frame, area, state, theme));
@@ -251,54 +254,55 @@ impl MainLayout {
             inspector_area.map(|area| Inspector::render(frame, area, state, services, now, theme));
         let (result_plan, result_widths_cache) =
             ResultPane::render(frame, result_area, state, now, theme);
-        // Input acts on the layout being switched to, so only panes drawn at their final size report what they measured.
+
+        // Input acts on the layout being switched to, so everything reported back describes the final panes.
+        let (target_left, target_inspector, target_result) = if state.ui.is_focus_mode() {
+            (None, None, main_area)
+        } else {
+            let (left, right) = split_columns(main_area, full_left.width);
+            let (inspector, result) = split_rows(right, full_inspector.height);
+            (left, inspector, result)
+        };
         let explorer = ExplorerLayout {
-            pane_height: full_left.height,
+            pane_height: target_left.map_or(0, |area| area.height),
             content_width: explorer_content_width
-                .filter(|_| left_area == Some(full_left))
+                .filter(|_| left_area.is_some() && left_area == target_left)
                 .unwrap_or_else(|| state.ui.explorer_content_width()),
         };
         let inspector = InspectorLayout {
             viewport_plan: inspector_plan
-                .filter(|_| inspector_area == Some(full_inspector))
+                .filter(|_| inspector_area.is_some() && inspector_area == target_inspector)
                 .unwrap_or_else(|| state.ui.inspector_viewport_plan().clone()),
-            pane_height: full_inspector.height,
+            pane_height: target_inspector.map_or(0, |area| area.height),
         };
+        let result_plan =
+            if result_area == target_result || result_widths_cache.ideal_widths.is_empty() {
+                result_plan
+            } else {
+                ViewportPlan::calculate(
+                    &result_widths_cache.ideal_widths,
+                    &result_widths_cache.header_min_widths,
+                    Block::bordered().inner(target_result).width,
+                )
+            };
 
         let drawn_panes = PaneAreas {
             explorer: left_area.map(pane_area),
             inspector: inspector_area.map(pane_area),
             result: Some(pane_area(result_area)),
         };
-        let target_result = if state.ui.is_focus_mode() {
-            main_area
-        } else {
-            full_result
-        };
         let browse = BrowseLayout {
             explorer,
             inspector,
             result: ResultLayout {
-                viewport_plan: if result_area == target_result {
-                    result_plan
-                } else {
-                    state.ui.result_viewport_plan().clone()
-                },
+                viewport_plan: result_plan,
                 widths_cache: result_widths_cache,
                 pane_height: target_result.height,
             },
-            pane_areas: if state.ui.is_focus_mode() {
-                PaneAreas {
-                    explorer: None,
-                    inspector: None,
-                    result: Some(pane_area(main_area)),
-                }
-            } else {
-                PaneAreas {
-                    explorer: Some(pane_area(full_left)),
-                    inspector: Some(pane_area(full_inspector)),
-                    result: Some(pane_area(full_result)),
-                }
+            pane_areas: PaneAreas {
+                explorer: target_left.map(pane_area),
+                inspector: target_inspector.map(pane_area),
+                result: Some(pane_area(target_result)),
             },
         };
         (browse, drawn_panes)
