@@ -5,7 +5,7 @@ use super::super::PostgresAdapter;
 impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn tables_query() -> &'static str {
         r"
-        SELECT json_agg(row_to_json(t))
+        SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
         FROM (
             SELECT
                 n.nspname as schema,
@@ -31,7 +31,7 @@ impl PostgresAdapter {
 
     pub(in crate::adapters::postgres) fn table_signatures_query() -> &'static str {
         r"
-        SELECT json_agg(row_to_json(t))
+        SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
         FROM (
             SELECT
                 n.nspname AS schema,
@@ -81,7 +81,7 @@ impl PostgresAdapter {
 
     pub(in crate::adapters::postgres) fn schemas_query() -> &'static str {
         r"
-        SELECT json_agg(row_to_json(s))
+        SELECT COALESCE(json_agg(row_to_json(s)), '[]'::json)
         FROM (
             SELECT nspname as name
             FROM pg_namespace
@@ -100,7 +100,7 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn columns_query(schema: &str, table: &str) -> String {
         format!(
             r"
-            SELECT json_agg(row_to_json(c) ORDER BY c.ordinal_position)
+            SELECT COALESCE(json_agg(row_to_json(c) ORDER BY c.ordinal_position), '[]'::json)
             FROM (
                 SELECT
                     a.attname as name,
@@ -191,7 +191,7 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn indexes_query(schema: &str, table: &str) -> String {
         format!(
             r"
-            SELECT json_agg(row_to_json(i))
+            SELECT COALESCE(json_agg(row_to_json(i)), '[]'::json)
             FROM (
                 SELECT
                     idx.relname as name,
@@ -232,7 +232,7 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn foreign_keys_query(schema: &str, table: &str) -> String {
         format!(
             r"
-            SELECT json_agg(row_to_json(fk))
+            SELECT COALESCE(json_agg(row_to_json(fk)), '[]'::json)
             FROM (
                 SELECT
                     con.conname as name,
@@ -272,11 +272,11 @@ impl PostgresAdapter {
                     SELECT json_agg(json_build_object(
                         'name', p.polname,
                         'permissive', p.polpermissive,
-                        'roles', (
+                        'roles', COALESCE((
                             SELECT array_agg(r.rolname)
                             FROM pg_roles r
                             WHERE r.oid = ANY(p.polroles)
-                        ),
+                        ), ARRAY[]::name[]),
                         'cmd', p.polcmd,
                         'qual', pg_get_expr(p.polqual, p.polrelid),
                         'with_check', pg_get_expr(p.polwithcheck, p.polrelid)
@@ -298,7 +298,7 @@ impl PostgresAdapter {
     pub(in crate::adapters::postgres) fn triggers_query(schema: &str, table: &str) -> String {
         format!(
             r"
-            SELECT json_agg(row_to_json(t) ORDER BY t.name)
+            SELECT COALESCE(json_agg(row_to_json(t) ORDER BY t.name), '[]'::json)
             FROM (
                 SELECT
                     tg.tgname AS name,
