@@ -1,6 +1,7 @@
 use crate::app::model::shared::text_input::input_viewport_offset;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
@@ -262,7 +263,7 @@ impl ConnectionSetup {
         frame.render_widget(label_para, chunks[0]);
 
         let display_value = if mask {
-            "*".repeat(value.chars().count())
+            "*".repeat(value.graphemes(true).count())
         } else {
             value.to_string()
         };
@@ -276,7 +277,16 @@ impl ConnectionSetup {
 
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
-            let cursor = input.cursor();
+            let cursor = if mask {
+                value
+                    .chars()
+                    .take(input.cursor())
+                    .collect::<String>()
+                    .graphemes(true)
+                    .count()
+            } else {
+                input.cursor()
+            };
             let viewport = input_viewport_offset(
                 &display_value,
                 cursor,
@@ -620,6 +630,52 @@ mod tests {
             .filter(|&x| buffer.cell((x, 0)).unwrap().symbol() == "*")
             .count();
         assert_eq!(stars, 13);
+    }
+
+    #[test]
+    fn masked_graphemes_follow_cursor_and_deletion() {
+        use crate::app::model::shared::cursor::CursorMove;
+        use crate::theme::DEFAULT_THEME;
+        use ratatui::{Terminal, backend::TestBackend};
+
+        fn render(state: &ConnectionSetupState) -> (usize, Vec<u16>) {
+            let mut terminal = Terminal::new(TestBackend::new(80, 1)).unwrap();
+            terminal
+                .draw(|frame| {
+                    ConnectionSetup::render_text_field(
+                        frame,
+                        frame.area(),
+                        state,
+                        ConnectionField::Password,
+                        true,
+                        &DEFAULT_THEME,
+                    );
+                })
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            let stars = (0..80)
+                .filter(|&x| buffer.cell((x, 0)).unwrap().symbol() == "*")
+                .count();
+            let cursor_positions = (0..80)
+                .filter(|&x| buffer.cell((x, 0)).unwrap().bg == DEFAULT_THEME.semantic.cursor.bg)
+                .collect();
+            (stars, cursor_positions)
+        }
+
+        let mut state = ConnectionSetupState::default();
+        focus_field(&mut state, ConnectionField::Password);
+        let input = state.input_mut(ConnectionField::Password).unwrap();
+        input.set_content("👩‍💻e\u{301}x".to_string());
+        input.set_cursor(0);
+        assert_eq!(render(&state), (3, vec![LABEL_WIDTH + 2]));
+        state
+            .focused_input_mut()
+            .unwrap()
+            .move_cursor(CursorMove::Right);
+        assert_eq!(render(&state), (3, vec![LABEL_WIDTH + 3]));
+        state.focused_input_mut().unwrap().delete();
+        assert_eq!(state.focused_input().unwrap().content(), "👩‍💻x");
+        assert_eq!(render(&state), (2, vec![LABEL_WIDTH + 3]));
     }
 
     #[test]
