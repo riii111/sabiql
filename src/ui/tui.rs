@@ -1,5 +1,4 @@
 use std::io::{self, Stdout, stdout};
-use std::time::Instant;
 
 use color_eyre::eyre::{Result, eyre};
 use crossterm::cursor::SetCursorStyle;
@@ -8,7 +7,6 @@ use crossterm::event::{
     Event as CrosstermEvent, EventStream, KeyEventKind,
 };
 use crossterm::execute;
-use crossterm::style::Print;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -20,9 +18,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::app::model::app_state::AppState;
 use crate::app::ports::inbound::InputEvent;
-use crate::program_status::{CLEAR_SEQUENCE, ProgramStatusReporter};
 
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 type TerminalEvent = Result<InputEvent, io::Error>;
@@ -76,7 +72,6 @@ pub struct TuiRunner {
     task: Option<JoinHandle<()>>,
     cancellation_token: CancellationToken,
     terminal_state: TerminalState,
-    program_status: ProgramStatusReporter,
 }
 
 impl TuiRunner {
@@ -92,7 +87,6 @@ impl TuiRunner {
             task: None,
             cancellation_token,
             terminal_state: TerminalState::default(),
-            program_status: ProgramStatusReporter::default(),
         })
     }
 
@@ -193,21 +187,6 @@ impl TuiRunner {
         &mut self.terminal
     }
 
-    pub fn report_program_status(&mut self, state: &AppState, now: Instant) -> io::Result<()> {
-        match self.program_status.observe(state, now) {
-            // Terminals without OSC 7501 support ignore the sequence, so it is sent without feature detection.
-            Some(next) => execute!(stdout(), Print(next.sequence())),
-            None => Ok(()),
-        }
-    }
-
-    pub fn acknowledge_program_status(&mut self) -> io::Result<()> {
-        match self.program_status.acknowledge() {
-            Some(next) => execute!(stdout(), Print(next.sequence())),
-            None => Ok(()),
-        }
-    }
-
     fn restore_terminal(&mut self) -> Result<()> {
         let mut first_error = if self.terminal_state.any_enabled()
             && let Err(error) = execute!(stdout(), SetCursorStyle::DefaultUserShape)
@@ -216,14 +195,6 @@ impl TuiRunner {
         } else {
             None
         };
-
-        // Hosts keep the last status until told otherwise, so a quit sabiql would otherwise look busy or done.
-        if self.program_status.take_reported()
-            && let Err(error) = execute!(stdout(), Print(CLEAR_SEQUENCE))
-            && first_error.is_none()
-        {
-            first_error = Some(error.into());
-        }
 
         if let Err(error) = restore_terminal_modes(&mut self.terminal_state, |mode| match mode {
             TerminalMode::Raw => disable_raw_mode().map_err(Into::into),

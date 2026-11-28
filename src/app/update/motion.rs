@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::motion::ScrolledPane;
-use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::update::action::{Action, ScrollAmount, ScrollTarget};
 
 /// What was on screen before an action, so transitions start from it.
 pub(super) struct MotionProbe {
@@ -79,31 +79,6 @@ fn scrolled_pane(target: ScrollTarget) -> Option<ScrolledPane> {
     })
 }
 
-/// Moves an animating pane to the offset last drawn before a line step, so the step starts from what is on screen.
-pub(super) fn settle_before_line_step(state: &mut AppState, action: &Action) {
-    let Action::Scroll {
-        target,
-        direction: ScrollDirection::Up | ScrollDirection::Down,
-        amount: ScrollAmount::Line,
-    } = action
-    else {
-        return;
-    };
-    let Some((pane, target_offset)) = state.motion.scroll_target() else {
-        return;
-    };
-    if scrolled_pane(*target) != Some(pane) {
-        return;
-    }
-    let drawn = state.motion.drawn_scroll_offset(pane, target_offset);
-    state.motion.cancel_scroll();
-    match pane {
-        ScrolledPane::Result => state.result_interaction.set_scroll_offset(drawn),
-        ScrolledPane::Inspector => state.ui.inspector_scroll_offset = drawn,
-        ScrolledPane::Help => state.ui.help_mut().set_scroll_offset(drawn),
-    }
-}
-
 // A selected row or cell must stay in view on every frame, so the result pane animates only while nothing is selected.
 fn is_animatable(state: &AppState, pane: ScrolledPane) -> bool {
     pane != ScrolledPane::Result || state.result_interaction.selection().row().is_none()
@@ -127,6 +102,7 @@ mod tests {
     use crate::domain::{QueryResult, QuerySource};
     use crate::model::shared::input_mode::InputMode;
     use crate::services::AppServices;
+    use crate::update::action::ScrollDirection;
     use crate::update::reducer::reduce;
 
     fn motion_state() -> AppState {
@@ -324,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn selecting_a_cell_mid_animation_starts_at_the_drawn_top_row() {
+    fn selecting_a_cell_mid_animation_settles_on_the_page_target() {
         let mut state = motion_state();
         let rows = (0..60).map(|i| vec![i.to_string()]).collect();
         state
@@ -340,27 +316,17 @@ mod tests {
         let probe = MotionProbe::capture(&state, &page_down());
         state.result_interaction.set_scroll_offset(20);
         probe.record(&mut state, start);
-        let drawn_at = start + Duration::from_millis(30);
-        state.motion.note_frame(drawn_at);
-        let drawn = state
-            .motion
-            .scroll_offset(ScrolledPane::Result, 20, drawn_at);
+        let midway = start + Duration::from_millis(30);
 
         reduce(
             &mut state,
             Action::ResultActivateCell,
-            drawn_at,
+            midway,
             &AppServices::stub(),
         );
 
-        assert!(drawn < 20, "drawn offset was {drawn}");
-        assert_eq!(state.result_interaction.selection().row(), Some(drawn));
-        assert_eq!(
-            state
-                .motion
-                .scroll_offset(ScrolledPane::Result, drawn, drawn_at),
-            drawn
-        );
+        assert_eq!(state.result_interaction.selection().row(), Some(20));
+        assert_eq!(state.motion.scroll_target(), None);
     }
 
     #[test]
@@ -377,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn line_step_mid_animation_moves_from_the_drawn_offset() {
+    fn line_step_mid_animation_settles_on_the_page_target_first() {
         let mut state = motion_state();
         state
             .query
@@ -392,24 +358,20 @@ mod tests {
         let start = Instant::now();
         reduce(&mut state, page_down(), start, &AppServices::stub());
         let target = state.result_interaction.scroll_offset();
-        let drawn_at = start + Duration::from_millis(30);
-        state.motion.note_frame(drawn_at);
-        let drawn = state
-            .motion
-            .scroll_offset(ScrolledPane::Result, target, drawn_at);
         let line_up = Action::Scroll {
             target: ScrollTarget::Result,
             direction: ScrollDirection::Up,
             amount: ScrollAmount::Line,
         };
 
-        reduce(&mut state, line_up, drawn_at, &AppServices::stub());
-
-        assert!(
-            drawn > 0 && drawn < target,
-            "drawn {drawn}, target {target}"
+        reduce(
+            &mut state,
+            line_up,
+            start + Duration::from_millis(30),
+            &AppServices::stub(),
         );
-        assert_eq!(state.result_interaction.scroll_offset(), drawn - 1);
+
+        assert_eq!(state.result_interaction.scroll_offset(), target - 1);
         assert_eq!(state.motion.scroll_target(), None);
     }
 

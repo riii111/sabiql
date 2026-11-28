@@ -23,7 +23,7 @@ use crate::services::AppServices;
 use crate::update::action::{Action, ListMotion, TableTarget};
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 use crate::update::input::keymap::{KeyContext, listed_palette_entries, palette_action};
-use crate::update::motion::{MotionProbe, settle_before_line_step};
+use crate::update::motion::MotionProbe;
 use crate::update::query_context::termination_effects;
 
 pub fn reduce(
@@ -32,7 +32,6 @@ pub fn reduce(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    settle_before_line_step(state, &action);
     let motion_probe = MotionProbe::capture(state, &action);
     let effects = reduce_without_motion(state, action, now, services);
     motion_probe.record(state, now);

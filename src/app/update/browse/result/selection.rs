@@ -1,6 +1,5 @@
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
-use crate::model::shared::motion::ScrolledPane;
 use crate::update::helpers::EditGuardrailError;
 
 use super::scroll::{result_col_count, result_row_count};
@@ -26,13 +25,7 @@ pub(in crate::update) fn result_activate_cell(state: &mut AppState) -> Vec<Effec
     let rows = result_row_count(state);
     let cols = result_col_count(state);
     if rows > 0 && cols > 0 {
-        // The first cell is the one at the top of the screen, which a running page animation has not finished moving.
-        let drawn = state.motion.drawn_scroll_offset(
-            ScrolledPane::Result,
-            state.result_interaction.scroll_offset(),
-        );
-        state.result_interaction.set_scroll_offset(drawn);
-        let row = drawn.min(rows - 1);
+        let row = state.result_interaction.scroll_offset().min(rows - 1);
         let col = state.result_interaction.horizontal_offset().min(cols - 1);
         state.result_interaction.activate_cell(row, col);
     }

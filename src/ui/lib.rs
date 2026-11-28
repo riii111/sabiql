@@ -25,7 +25,6 @@ pub(crate) mod features;
     reason = "Explicit crate visibility keeps internal UI items compatible with unreachable_pub."
 )]
 pub(crate) mod primitives;
-pub mod program_status;
 pub mod shell;
 pub mod theme;
 pub mod tui;
