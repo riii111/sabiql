@@ -340,6 +340,7 @@ mod tests {
     async fn append_keeps_new_entries_when_trim_fails_and_retries_on_next_append() {
         use std::fmt::Write as _;
 
+        let expected_limit = 1_000;
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let scope = scope(&ConnectionId::from_string("test-conn"));
@@ -347,7 +348,7 @@ mod tests {
         let path = history_dir.join("test-conn.jsonl");
         let tmp_path = path.with_extension("jsonl.tmp");
         let mut content = String::new();
-        for i in 0..MAX_HISTORY_ENTRIES {
+        for i in 0..expected_limit {
             let entry = make_entry(&format!("SELECT {i}"));
             writeln!(content, "{}", serde_json::to_string(&entry).unwrap()).unwrap();
         }
@@ -360,7 +361,7 @@ mod tests {
             .unwrap();
 
         let entries = store.load("test", &scope).await.unwrap();
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES + 1);
+        assert_eq!(entries.len(), expected_limit + 1);
         assert_eq!(entries.last().unwrap().query, "SELECT first_append");
 
         std::fs::remove_dir(&tmp_path).unwrap();
@@ -370,12 +371,9 @@ mod tests {
             .unwrap();
 
         let entries = store.load("test", &scope).await.unwrap();
-        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
+        assert_eq!(entries.len(), expected_limit);
         assert_eq!(entries[0].query, "SELECT 2");
-        assert_eq!(
-            entries[MAX_HISTORY_ENTRIES - 2].query,
-            "SELECT first_append"
-        );
+        assert_eq!(entries[expected_limit - 2].query, "SELECT first_append");
         assert_eq!(entries.last().unwrap().query, "SELECT second_append");
     }
 

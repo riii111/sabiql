@@ -1414,6 +1414,37 @@ mod tests {
         use crate::model::explain_context::ExplainContext;
 
         #[test]
+        fn analyze_confirmation_scroll_moves_the_query_preview() {
+            let mut state = sql_modal_state();
+            activate_postgres_connection(&mut state);
+            state.ui.terminal_height = 24;
+            let query = format!(
+                "{}UPDATE users SET active = false",
+                "-- comment\n".repeat(30)
+            );
+            state.sql_modal.editor.set_content(query.clone());
+            state
+                .sql_modal
+                .begin_confirming_analyze_high(query, "users".to_string());
+
+            for (direction, expected_offset) in
+                [(ScrollDirection::Down, 1), (ScrollDirection::Up, 0)]
+            {
+                let effects = reduce_at_boundary(
+                    &mut state,
+                    Action::Scroll {
+                        target: ScrollTarget::ExplainConfirm,
+                        direction,
+                        amount: ScrollAmount::Line,
+                    },
+                );
+
+                assert_eq!(state.explain.confirm_scroll_offset(), expected_offset);
+                assert!(effects.is_empty());
+            }
+        }
+
+        #[test]
         fn plan_scroll_up_saturates_at_zero() {
             let mut state = sql_modal_state();
             state.explain.scroll_offset = 0;
