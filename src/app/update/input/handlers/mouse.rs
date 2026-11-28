@@ -26,6 +26,14 @@ fn browse_mouse_action(input: MouseInput, state: &AppState) -> Action {
         FocusedPane::Inspector => ScrollTarget::Inspector,
         FocusedPane::Result => ScrollTarget::Result,
     };
+    // With a cell selected, horizontal steps move the selection as the arrow keys do, so the cell that copy and edit act on stays in view.
+    if pane == FocusedPane::Result && state.result_interaction.selection().cell().is_some() {
+        match input.kind {
+            MouseKind::ScrollLeft => return Action::ResultCellLeft,
+            MouseKind::ScrollRight => return Action::ResultCellRight,
+            MouseKind::LeftClick | MouseKind::ScrollUp | MouseKind::ScrollDown => {}
+        }
+    }
     match input.kind {
         MouseKind::LeftClick => Action::SetFocusedPane(pane),
         MouseKind::ScrollUp => line_scroll(target, ScrollDirection::Up),
@@ -304,5 +312,20 @@ mod tests {
         let action = handle_mouse_event(mouse(MouseKind::LeftClick, RESULT_CELL), &state);
 
         assert!(matches!(action, Action::None));
+    }
+
+    #[test]
+    fn horizontal_wheel_with_selected_cell_moves_the_cell() {
+        let mut state = browse_state();
+        state.result_interaction.activate_cell(0, 0);
+
+        assert!(matches!(
+            handle_mouse_event(mouse(MouseKind::ScrollRight, RESULT_CELL), &state),
+            Action::ResultCellRight
+        ));
+        assert!(matches!(
+            handle_mouse_event(mouse(MouseKind::ScrollLeft, RESULT_CELL), &state),
+            Action::ResultCellLeft
+        ));
     }
 }

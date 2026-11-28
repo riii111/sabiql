@@ -36,6 +36,7 @@ pub const CLEAR_SEQUENCE: &str = "\x1b]7501;state=clear\x1b\\";
 struct BusyRun {
     since: Instant,
     result_generation: u64,
+    had_explain_error: bool,
 }
 
 #[derive(Debug, Default)]
@@ -51,6 +52,7 @@ impl ProgramStatusReporter {
             let run = *self.busy.get_or_insert_with(|| BusyRun {
                 since: now,
                 result_generation: state.query.result_generation(),
+                had_explain_error: state.explain.error().is_some(),
             });
             (now.saturating_duration_since(run.since) >= REPORT_AFTER)
                 .then_some(ProgramState::Working)
@@ -97,7 +99,10 @@ fn finished_state(state: &AppState, run: Option<BusyRun>) -> ProgramState {
             .query
             .visible_result()
             .is_some_and(QueryResult::is_error);
-    if failed_query || state.messages.last_error().is_some() {
+    // EXPLAIN reports its failure in the plan view rather than as a result, and a new EXPLAIN run clears the old one.
+    let failed_explain =
+        state.explain.error().is_some() && run.is_none_or(|run| !run.had_explain_error);
+    if failed_query || failed_explain || state.messages.last_error().is_some() {
         ProgramState::Error
     } else {
         ProgramState::Done
@@ -202,6 +207,39 @@ mod tests {
             1,
             QuerySource::Adhoc,
         )));
+        let _ = state.query.begin_running(now);
+        let mut reporter = ProgramStatusReporter::default();
+        report_working(&mut reporter, &state, now);
+
+        state.query.mark_idle();
+
+        assert_eq!(
+            reporter.observe(&state, now + REPORT_AFTER),
+            Some(ProgramState::Done)
+        );
+    }
+
+    #[test]
+    fn failed_explain_is_error() {
+        let now = Instant::now();
+        let mut state = running_state(now);
+        let mut reporter = ProgramStatusReporter::default();
+        report_working(&mut reporter, &state, now);
+
+        state.query.mark_idle();
+        state.explain.set_error("syntax error".to_string());
+
+        assert_eq!(
+            reporter.observe(&state, now + REPORT_AFTER),
+            Some(ProgramState::Error)
+        );
+    }
+
+    #[test]
+    fn explain_error_from_an_earlier_run_does_not_fail_a_later_query() {
+        let now = Instant::now();
+        let mut state = AppState::new("test".to_string());
+        state.explain.set_error("old".to_string());
         let _ = state.query.begin_running(now);
         let mut reporter = ProgramStatusReporter::default();
         report_working(&mut reporter, &state, now);

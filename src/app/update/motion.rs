@@ -53,24 +53,60 @@ impl MotionProbe {
 fn animated_scroll_pane(state: &AppState, action: &Action) -> Option<ScrolledPane> {
     let pane = match action {
         // Line steps stay immediate because key repeat and the mouse wheel already move one row at a time.
-        Action::Scroll { target, amount, .. } if *amount != ScrollAmount::Line => match target {
-            ScrollTarget::Result => ScrolledPane::Result,
-            ScrollTarget::Inspector => ScrolledPane::Inspector,
-            ScrollTarget::Help => ScrolledPane::Help,
-            ScrollTarget::ExplainPlan => ScrolledPane::ExplainPlan,
-            ScrollTarget::ExplainCompare => ScrolledPane::ExplainCompare,
-            ScrollTarget::SqliteDiagnostics => ScrolledPane::SqliteDiagnostics,
-            ScrollTarget::CellDetail => ScrolledPane::CellDetail,
-            ScrollTarget::RowDetail => ScrolledPane::RowDetail,
-            // Short dialogs rarely scroll, and the explorer keeps a selection that must move with its window.
-            ScrollTarget::ConnectionError
-            | ScrollTarget::ConfirmDialog
-            | ScrollTarget::ExplainConfirm
-            | ScrollTarget::Explorer => return None,
-        },
+        Action::Scroll { target, amount, .. } if *amount != ScrollAmount::Line => {
+            scrolled_pane(*target)?
+        }
         _ => return None,
     };
     is_animatable(state, pane).then_some(pane)
+}
+
+fn scrolled_pane(target: ScrollTarget) -> Option<ScrolledPane> {
+    Some(match target {
+        ScrollTarget::Result => ScrolledPane::Result,
+        ScrollTarget::Inspector => ScrolledPane::Inspector,
+        ScrollTarget::Help => ScrolledPane::Help,
+        ScrollTarget::ExplainPlan => ScrolledPane::ExplainPlan,
+        ScrollTarget::ExplainCompare => ScrolledPane::ExplainCompare,
+        ScrollTarget::SqliteDiagnostics => ScrolledPane::SqliteDiagnostics,
+        ScrollTarget::CellDetail => ScrolledPane::CellDetail,
+        ScrollTarget::RowDetail => ScrolledPane::RowDetail,
+        // Short dialogs rarely scroll, and the explorer keeps a selection that must move with its window.
+        ScrollTarget::ConnectionError
+        | ScrollTarget::ConfirmDialog
+        | ScrollTarget::ExplainConfirm
+        | ScrollTarget::Explorer => return None,
+    })
+}
+
+/// Moves an animating pane to the offset last drawn before a line step, so the step starts from what is on screen.
+pub(super) fn settle_before_line_step(state: &mut AppState, action: &Action) {
+    let Action::Scroll {
+        target,
+        amount: ScrollAmount::Line,
+        ..
+    } = action
+    else {
+        return;
+    };
+    let Some((pane, target_offset)) = state.motion.scroll_target() else {
+        return;
+    };
+    if scrolled_pane(*target) != Some(pane) {
+        return;
+    }
+    let drawn = state.motion.drawn_scroll_offset(pane, target_offset);
+    match pane {
+        ScrolledPane::Result => state.result_interaction.set_scroll_offset(drawn),
+        ScrolledPane::Inspector => state.ui.inspector_scroll_offset = drawn,
+        ScrolledPane::Help => state.ui.help_mut().set_scroll_offset(drawn),
+        ScrolledPane::SqliteDiagnostics => state.sqlite_diagnostics.set_scroll_offset(drawn),
+        // These views do not expose their offset, so a line step there still starts from the page jump's target.
+        ScrolledPane::ExplainPlan
+        | ScrolledPane::ExplainCompare
+        | ScrolledPane::CellDetail
+        | ScrolledPane::RowDetail => {}
+    }
 }
 
 // A selected row or cell must stay in view on every frame, so the result pane animates only while nothing is selected.
@@ -349,6 +385,42 @@ mod tests {
         reduce(&mut state, Action::Render, now, &AppServices::stub());
 
         assert_eq!(state.motion.scroll_offset(ScrolledPane::Result, 20, now), 0);
+    }
+
+    #[test]
+    fn line_step_mid_animation_moves_from_the_drawn_offset() {
+        let mut state = motion_state();
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                "SELECT id".to_string(),
+                vec!["id".to_string()],
+                (0..60).map(|i| vec![i.to_string()]).collect(),
+                1,
+                QuerySource::Preview,
+            )));
+        state.ui.set_result_pane_height(24);
+        let start = Instant::now();
+        reduce(&mut state, page_down(), start, &AppServices::stub());
+        let target = state.result_interaction.scroll_offset();
+        let drawn_at = start + Duration::from_millis(30);
+        state.motion.note_frame(drawn_at);
+        let drawn = state
+            .motion
+            .scroll_offset(ScrolledPane::Result, target, drawn_at);
+        let line_up = Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        };
+
+        reduce(&mut state, line_up, drawn_at, &AppServices::stub());
+
+        assert!(
+            drawn > 0 && drawn < target,
+            "drawn {drawn}, target {target}"
+        );
+        assert_eq!(state.result_interaction.scroll_offset(), drawn - 1);
     }
 
     #[test]
