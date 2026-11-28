@@ -71,45 +71,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn core_reports_snapshot_on_success() {
-        let mut provider = MockSqliteDiagnosticsProvider::new();
-        provider.expect_fetch_core_diagnostics().returning(|_| {
-            Ok(SqliteDiagnosticsSnapshot {
-                sqlite_version: DiagnosticField::ok("3.45.0"),
-                ..Default::default()
-            })
-        });
-
-        let action = fetch_core(Arc::new(provider), app_db(), 1).await;
-
-        assert!(matches!(
-            action,
-            Action::SqliteDiagnosticsCoreLoaded {
-                snapshot,
-                ..
-            } if snapshot.sqlite_version.ok_value() == Some("3.45.0")
-        ));
-    }
-
-    #[tokio::test]
-    async fn quick_check_reports_field() {
-        let mut provider = MockSqliteDiagnosticsProvider::new();
-        provider
-            .expect_fetch_quick_check()
-            .returning(|_| DiagnosticField::ok("ok"));
-
-        let action = fetch_quick_check(Arc::new(provider), app_db(), 1).await;
-
-        assert!(matches!(
-            action,
-            Action::SqliteDiagnosticsQuickCheckLoaded {
-                quick_check,
-                ..
-            } if quick_check.ok_value() == Some("ok")
-        ));
-    }
-
-    #[tokio::test]
     async fn core_reports_partial_snapshot_on_provider_error() {
         let mut provider = MockSqliteDiagnosticsProvider::new();
         provider

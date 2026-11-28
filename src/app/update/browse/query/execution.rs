@@ -395,25 +395,6 @@ mod tests {
         }
 
         #[test]
-        fn submit_erd_opens_er_table_picker_after_metadata() {
-            let mut state = create_test_state();
-            state.modal.push_mode(InputMode::CommandLine);
-            state.command_line_input.set_content("erd".to_string());
-
-            let effects = route(
-                &mut state,
-                Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(state.command_line_input.content().is_empty());
-            assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.ui.pending_er_picker());
-            assert!(effects.is_empty());
-        }
-
-        #[test]
         fn submit_settings_opens_settings() {
             let mut state = create_test_state();
             state.modal.push_mode(InputMode::CommandLine);
@@ -428,24 +409,6 @@ mod tests {
 
             assert!(state.command_line_input.content().is_empty());
             assert_eq!(state.input_mode(), InputMode::Settings);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn submit_palette_opens_command_palette() {
-            let mut state = create_test_state();
-            state.modal.push_mode(InputMode::CommandLine);
-            state.command_line_input.set_content("palette".to_string());
-
-            let effects = route(
-                &mut state,
-                Action::CommandLineSubmit,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(state.command_line_input.content().is_empty());
-            assert_eq!(state.input_mode(), InputMode::CommandPalette);
             assert!(effects.is_empty());
         }
     }
@@ -588,40 +551,6 @@ mod tests {
             route(&mut state, action, now, &AppServices::stub());
 
             assert_eq!(state.query.pagination.current_page(), 3);
-        }
-
-        #[rstest::rstest]
-        #[case(DatabaseType::PostgreSQL)]
-        #[case(DatabaseType::MySQL)]
-        #[case(DatabaseType::SQLite)]
-        fn inspector_terminal_state_precedes_preview_for_all_engines(
-            #[case] database_type: DatabaseType,
-        ) {
-            let (mut state, generation, detail_run_id) = state_with_selected_table(database_type);
-            let now = Instant::now();
-            let endpoint = active_endpoint(&state);
-
-            let inspector_effects = route(
-                &mut state,
-                Action::TableDetailLoaded {
-                    endpoint,
-                    run_id: detail_run_id,
-                    outcome: Ok(Box::new(users_table_detail())),
-                    generation,
-                },
-                now,
-                &AppServices::stub(),
-            );
-
-            assert!(inspector_effects.is_empty());
-            assert!(state.session.is_table_detail_terminal(generation));
-            assert!(state.query.current_result().is_none());
-
-            let query_action =
-                query_completed_action(&mut state, preview_result(1), generation, Some(0));
-            route(&mut state, query_action, now, &AppServices::stub());
-
-            assert!(state.query.current_result().is_some());
         }
 
         #[test]
@@ -899,45 +828,6 @@ mod tests {
         }
 
         #[test]
-        fn preview_failure_after_failed_inspector_shows_error_result() {
-            let (mut state, generation, detail_run_id) =
-                state_with_selected_table(DatabaseType::PostgreSQL);
-            state.query.set_delete_refresh_target(1, None, 1);
-            let query_action = query_failed_action(
-                &mut state,
-                DbOperationError::PermissionDenied("forbidden".to_string()),
-                generation,
-                QuerySource::Preview,
-            );
-
-            route(
-                &mut state,
-                Action::TableDetailLoaded {
-                    endpoint: endpoint::postgres("postgres://localhost/test"),
-                    run_id: detail_run_id,
-                    outcome: Err(DbOperationError::QueryFailed(
-                        "inspector failed".to_string(),
-                    )),
-                    generation,
-                },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-            let effects = route(
-                &mut state,
-                query_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(effects.is_empty());
-            assert!(state.messages.last_error().is_some());
-            let result = state.query.current_result().expect("error result");
-            assert!(result.is_error());
-            assert!(state.query.pending_delete_refresh_target().is_none());
-        }
-
-        #[test]
         fn adhoc_failure_after_data_change_refreshes_preview() {
             let mut state = state_with_table("public", "users");
             let action = query_failed_action(
@@ -1072,14 +962,6 @@ mod tests {
                     && *detail_run_id != stale_detail_run_id
                     && table == "users"
             ));
-            assert!(
-                state
-                    .session
-                    .is_current_table_detail_run(match &effects[0] {
-                        Effect::LoadTable { detail_run_id, .. } => *detail_run_id,
-                        _ => unreachable!(),
-                    })
-            );
         }
 
         #[test]

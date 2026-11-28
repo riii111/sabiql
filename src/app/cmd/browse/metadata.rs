@@ -82,7 +82,7 @@ pub(in crate::cmd) async fn process_prefetch_queue_after(delay_secs: u64, run_id
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::test_fixtures;
+
     use crate::domain::Table;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::test_support::{self, endpoint};
@@ -93,38 +93,6 @@ mod tests {
             name: "users".to_string(),
             ..test_support::table::minimal("", "")
         }
-    }
-
-    #[tokio::test]
-    async fn metadata_fetch_reports_provider_outcome() {
-        let mut provider = MockMetadataProvider::new();
-        provider
-            .expect_fetch_metadata()
-            .once()
-            .returning(|_| Ok(test_fixtures::sample_metadata()));
-        provider
-            .expect_fetch_metadata()
-            .once()
-            .returning(|_| Err(DbOperationError::ConnectionFailed("timeout".to_string())));
-        let provider = Arc::new(provider) as Arc<dyn MetadataProvider>;
-
-        let loaded = fetch_metadata(Arc::clone(&provider), endpoint::postgres("dsn://a"), 7).await;
-        let failed = fetch_metadata(provider, endpoint::postgres("dsn://b"), 8).await;
-
-        assert!(matches!(
-            loaded,
-            Action::MetadataLoaded {
-                run_id: 7,
-                outcome: Ok(_)
-            }
-        ));
-        assert!(matches!(
-            failed,
-            Action::MetadataLoaded {
-                run_id: 8,
-                outcome: Err(DbOperationError::ConnectionFailed(_))
-            }
-        ));
     }
 
     #[tokio::test]

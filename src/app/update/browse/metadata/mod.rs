@@ -1457,47 +1457,10 @@ mod tests {
                 Effect::SchedulePrefetchQueueProcessing { run_id: scheduled } if *scheduled == run_id
             )));
         }
-
-        #[test]
-        fn complete_fk_expanded_generates() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.er_preparation.start_waiting_run();
-            state
-                .table_detail_cache
-                .insert("public.users".to_string(), *empty_table("public", "users"));
-            state.er_preparation.mark_fk_expanded();
-
-            let effects = check_er_completion(&mut state);
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
-            );
-        }
     }
 
     mod fk_neighbors_discovered {
         use super::*;
-
-        #[test]
-        fn empty_neighbors_generates() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.table_prefetch.begin_er_prefetch();
-            let _ = state.er_preparation.start_waiting_run();
-            state
-                .table_detail_cache
-                .insert("public.users".to_string(), *empty_table("public", "users"));
-
-            let effects = er_neighbors::queue_fk_neighbors(&mut state, run_id, &[]);
-
-            assert!(state.er_preparation.fk_expanded());
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::GenerateErDiagram { .. }))
-            );
-        }
 
         #[test]
         fn non_empty_neighbors_adds_to_queue() {

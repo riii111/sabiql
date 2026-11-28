@@ -13,7 +13,7 @@ use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::connection::{ConnectionEndpoint, ServiceEntry};
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::domain::{
-    DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, SqlitePathError,
+    DiagnosticField, ErTableInfo, QueryResult, QuerySource, SqlitePathError,
     classify_sqlite_metadata_error, classify_sqlite_read_error,
 };
 use crate::model::app_state::AppState;
@@ -395,10 +395,6 @@ fn make_runner_with_all(
         settings_store,
         action_tx,
     )
-}
-
-pub fn sample_metadata() -> DatabaseMetadata {
-    DatabaseMetadata::new("testdb".to_string())
 }
 
 pub fn sample_query_result() -> QueryResult {

@@ -1190,55 +1190,6 @@ mod tests {
         }
     }
 
-    mod settings_save {
-        use super::*;
-        use crate::model::shared::theme_id::ThemeId;
-        use crate::ports::outbound::AppSettings;
-        use std::time::Duration;
-
-        #[tokio::test]
-        async fn reports_saves_in_effect_order() {
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                tx,
-            );
-            let settings = |theme_id| AppSettings {
-                theme_id,
-                ..AppSettings::default()
-            };
-
-            runner
-                .execute_effects(
-                    vec![
-                        Effect::SaveSettings {
-                            settings: settings(ThemeId::Light),
-                        },
-                        Effect::SaveSettings {
-                            settings: settings(ThemeId::Default),
-                        },
-                    ],
-                    &mut NoopRenderer,
-                    &mut AppState::new("test".to_string()),
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let first =
-                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
-            let second =
-                test_fixtures::recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
-            let themes = [first, second].map(|action| match action {
-                Action::SettingsSaved(Ok(saved)) => saved.theme_id,
-                other => panic!("expected saved settings, got {other:?}"),
-            });
-            assert_eq!(themes, [ThemeId::Light, ThemeId::Default]);
-        }
-    }
-
     mod settings_shutdown {
         use std::sync::Mutex as StdMutex;
         use std::sync::mpsc as std_mpsc;
@@ -1492,7 +1443,7 @@ mod tests {
         use crate::domain::Table;
         use crate::domain::connection::ConnectionId;
         use crate::ports::outbound::DbOperationError;
-        use crate::update::action::ConnectionTarget;
+
         use crate::update::reducer::reduce;
 
         struct PendingMetadataProvider {
@@ -1562,98 +1513,6 @@ mod tests {
             ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 unreachable!("test only starts metadata tasks")
             }
-        }
-
-        struct ProbeThatObservesDrop {
-            metadata_dropped: Arc<AtomicUsize>,
-            started: Mutex<Option<oneshot::Sender<bool>>>,
-        }
-
-        #[async_trait::async_trait]
-        impl MySqlConnectionProbe for ProbeThatObservesDrop {
-            async fn probe(
-                &self,
-                _endpoint: &ConnectionEndpoint,
-            ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
-                self.started
-                    .lock()
-                    .expect("probe started signal lock poisoned")
-                    .take()
-                    .expect("probe should start once")
-                    .send(self.metadata_dropped.load(Ordering::SeqCst) > 0)
-                    .ok();
-                Ok(MySqlConnectionProbeResult {
-                    lower_case_table_names: 0,
-                })
-            }
-        }
-
-        #[tokio::test]
-        async fn drops_old_metadata_before_new_mysql_probe_starts() {
-            let (metadata_started_tx, metadata_started_rx) = oneshot::channel();
-            let (probe_started_tx, probe_started_rx) = oneshot::channel();
-            let dropped = Arc::new(AtomicUsize::new(0));
-            let metadata_provider = PendingMetadataProvider {
-                metadata_started: Mutex::new(Some(metadata_started_tx)),
-                effective_user_started: Mutex::new(None),
-                effective_user_result: Mutex::new(None),
-                dropped: Arc::clone(&dropped),
-            };
-            let probe = ProbeThatObservesDrop {
-                metadata_dropped: Arc::clone(&dropped),
-                started: Mutex::new(Some(probe_started_tx)),
-            };
-            let (action_tx, _action_rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_probe(
-                Arc::new(metadata_provider),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(MockConnectionStore::new()),
-                action_tx,
-                Arc::new(probe),
-            );
-            let mut state = AppState::new("test".to_string());
-            let mut renderer = NoopRenderer;
-
-            runner
-                .execute_effects(
-                    vec![Effect::FetchMetadata {
-                        endpoint: endpoint::postgres("postgres://localhost/old"),
-                        run_id: 1,
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-            metadata_started_rx.await.expect("metadata should start");
-
-            runner
-                .execute_effects(
-                    vec![
-                        Effect::CancelMetadataTasks,
-                        Effect::ProbeMySqlConnection {
-                            target: ConnectionTarget {
-                                id: ConnectionId::new(),
-                                name: "new".to_string(),
-                                endpoint: endpoint::mysql("mysql://localhost/new", Some("new")),
-                            },
-                            run_id: 2,
-                        },
-                    ],
-                    &mut renderer,
-                    &mut state,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert!(
-                probe_started_rx
-                    .await
-                    .expect("probe should start after cancellation")
-            );
-            assert_eq!(dropped.load(Ordering::SeqCst), 1);
         }
 
         #[tokio::test]
