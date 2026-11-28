@@ -879,7 +879,7 @@ Execution Time: 0.600 ms";
         }
 
         #[test]
-        fn same_node_type_not_in_reasons() {
+        fn unchanged_node_and_row_estimate_are_omitted_from_reasons() {
             let baseline = make_plan(Some(100.0), Some(10.0), Some("Seq Scan"));
             let current = make_plan(Some(105.0), Some(10.0), Some("Seq Scan"));
 
@@ -890,6 +890,12 @@ Execution Time: 0.600 ms";
                     .reasons
                     .iter()
                     .any(|r| r.contains("Seq Scan \u{2192}"))
+            );
+            assert!(
+                !result
+                    .reasons
+                    .iter()
+                    .any(|r| r.starts_with("Estimated rows:"))
             );
         }
 
@@ -905,21 +911,6 @@ Execution Time: 0.600 ms";
                     .reasons
                     .iter()
                     .any(|r| r.contains("Estimated rows: 1000 \u{2192} 10"))
-            );
-        }
-
-        #[test]
-        fn same_row_estimate_not_in_reasons() {
-            let baseline = make_plan(Some(100.0), Some(10.0), Some("Seq Scan"));
-            let current = make_plan(Some(105.0), Some(10.0), Some("Seq Scan"));
-
-            let result = compare_plans(&baseline, &current);
-
-            assert!(
-                !result
-                    .reasons
-                    .iter()
-                    .any(|r| r.starts_with("Estimated rows:"))
             );
         }
 
