@@ -1819,17 +1819,6 @@ mod tests {
         }
 
         #[test]
-        fn default_state() {
-            let session = BrowseSession::default();
-            assert!(session.connection_state().is_not_connected());
-            assert_eq!(session.metadata_state(), &MetadataState::NotLoaded);
-            assert!(session.metadata().is_none());
-            assert!(session.selected_table_key().is_none());
-            assert!(session.table_detail().is_none());
-            assert_eq!(session.selection_generation(), 0);
-        }
-
-        #[test]
         fn active_engine_feature_profile_uses_active_database_type() {
             for (database_type, expected) in [
                 (

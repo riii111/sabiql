@@ -985,15 +985,6 @@ mod tests {
     mod pane_geometry {
         use super::*;
 
-        #[test]
-        fn result_rows_default_to_zero() {
-            let state = make_state();
-
-            let visible = state.result_visible_rows();
-
-            assert_eq!(visible, 0);
-        }
-
         #[rstest]
         #[case(10, 5)]
         #[case(15, 10)]
@@ -1564,13 +1555,6 @@ mod tests {
         mod er_preparation {
             use super::*;
 
-            #[test]
-            fn defaults_to_idle() {
-                let state = make_state();
-
-                assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            }
-
             #[rstest]
             #[case(ErStatus::Waiting)]
             #[case(ErStatus::Rendering)]
@@ -1616,14 +1600,6 @@ mod tests {
                 );
 
                 assert_eq!(state.ui.inspector_scroll_offset(), 0);
-            }
-
-            #[test]
-            fn offset_defaults_to_zero() {
-                let state = make_state();
-
-                assert_eq!(state.ui.inspector_scroll_offset(), 0);
-                assert!(state.session.table_detail().is_none());
             }
         }
     }

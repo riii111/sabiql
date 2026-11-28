@@ -118,24 +118,7 @@ impl TableSummary {
 mod tests {
     use super::*;
 
-    fn make_table(schema: &str, name: &str) -> Table {
-        Table {
-            schema: schema.to_string(),
-            name: name.to_string(),
-            owner: None,
-            columns: Vec::new(),
-            primary_key: None,
-            foreign_keys: Vec::new(),
-            indexes: Vec::new(),
-            rls: None,
-            triggers: Vec::new(),
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
-            storage_attributes: TableStorageAttributes::default(),
-            kind_info: TableKindInfo::default(),
-        }
-    }
+    use crate::test_support::table::minimal as make_table;
 
     fn make_summary(schema: &str, name: &str) -> TableSummary {
         TableSummary::new(schema.to_string(), name.to_string(), None, false)

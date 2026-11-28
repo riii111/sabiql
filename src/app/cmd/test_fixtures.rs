@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use color_eyre::eyre::Result;
@@ -28,6 +29,22 @@ use crate::ports::outbound::{
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
+
+pub(super) struct DropFlag(pub(super) Arc<AtomicBool>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+pub(super) struct DropCounter(pub(super) Arc<AtomicUsize>);
+
+impl Drop for DropCounter {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TestFsSqlitePathValidator;

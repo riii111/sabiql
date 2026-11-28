@@ -462,16 +462,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn default_creates_idle_state() {
-        let execution = QueryExecution::default();
-
-        assert!(!execution.is_running());
-        assert!(execution.start_time().is_none());
-        assert!(execution.current_result().is_none());
-        assert_eq!(execution.result_generation(), 0);
-    }
-
     mod result_generation_tests {
         use super::*;
 

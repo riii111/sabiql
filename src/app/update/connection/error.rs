@@ -28,7 +28,7 @@ pub(in crate::update) fn scroll_connection_error(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match (direction, amount) {
         (ScrollDirection::Up, ScrollAmount::Line) => {
             state.connection_error.scroll_up();
@@ -45,7 +45,6 @@ pub(in crate::update) fn scroll_connection_error(
             "unsupported ConnectionError scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 pub(in crate::update) fn copy_connection_error(state: &AppState) -> Vec<Effect> {

@@ -323,7 +323,7 @@ impl EffectRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::test_fixtures::{self, NoopRenderer};
+    use crate::cmd::test_fixtures::{self, DropCounter, DropFlag, NoopRenderer};
     use crate::domain::connection::ConnectionEndpoint;
     use crate::domain::{DatabaseMetadata, TableSignatureSnapshot, TableSummary};
     use crate::model::shared::render_output::{
@@ -798,14 +798,6 @@ mod tests {
         use crate::update::action::ConnectionTarget;
         use crate::update::reducer::reduce;
 
-        struct DropSignal(Arc<AtomicBool>);
-
-        impl Drop for DropSignal {
-            fn drop(&mut self) {
-                self.0.store(true, Ordering::SeqCst);
-            }
-        }
-
         struct PendingQueryExecutor {
             started: Mutex<Option<oneshot::Sender<()>>>,
             dropped: Arc<AtomicBool>,
@@ -821,7 +813,7 @@ mod tests {
                 _limit: usize,
                 _offset: usize,
             ) -> Result<QueryResult, DbOperationError> {
-                let _guard = DropSignal(Arc::clone(&self.dropped));
+                let _guard = DropFlag(Arc::clone(&self.dropped));
                 self.started
                     .lock()
                     .expect("started signal lock poisoned")
@@ -880,7 +872,7 @@ mod tests {
                 _schema: &str,
                 _table: &str,
             ) -> Result<Table, DbOperationError> {
-                let _guard = DropSignal(Arc::clone(&self.dropped));
+                let _guard = DropFlag(Arc::clone(&self.dropped));
                 self.started
                     .lock()
                     .expect("started signal lock poisoned")
@@ -1065,14 +1057,6 @@ mod tests {
         use crate::update::action::ConnectionTarget;
         use crate::update::reducer::reduce;
 
-        struct DropSignal(Arc<AtomicUsize>);
-
-        impl Drop for DropSignal {
-            fn drop(&mut self) {
-                self.0.fetch_add(1, Ordering::SeqCst);
-            }
-        }
-
         struct PendingMetadataProvider {
             metadata_started: Mutex<Option<oneshot::Sender<()>>>,
             effective_user_started: Mutex<Option<oneshot::Sender<()>>>,
@@ -1086,7 +1070,7 @@ mod tests {
                 &self,
                 _endpoint: &ConnectionEndpoint,
             ) -> Result<DatabaseMetadata, DbOperationError> {
-                let _guard = DropSignal(Arc::clone(&self.dropped));
+                let _guard = DropCounter(Arc::clone(&self.dropped));
                 self.metadata_started
                     .lock()
                     .expect("metadata started signal lock poisoned")
@@ -1101,7 +1085,7 @@ mod tests {
                 &self,
                 _endpoint: &ConnectionEndpoint,
             ) -> Result<Option<String>, DbOperationError> {
-                let _guard = DropSignal(Arc::clone(&self.dropped));
+                let _guard = DropCounter(Arc::clone(&self.dropped));
                 self.effective_user_started
                     .lock()
                     .expect("effective user started signal lock poisoned")
@@ -1255,7 +1239,7 @@ mod tests {
                 .replace({
                     let dropped = Arc::clone(&old_dropped);
                     async move {
-                        let _guard = DropSignal(dropped);
+                        let _guard = DropCounter(dropped);
                         old_started_tx.send(()).unwrap();
                         pending::<()>().await;
                     }
@@ -1390,14 +1374,6 @@ mod tests {
         use crate::update::action::ConnectionTarget;
         use crate::update::reducer::reduce;
 
-        struct DropSignal(Arc<AtomicUsize>);
-
-        impl Drop for DropSignal {
-            fn drop(&mut self) {
-                self.0.fetch_add(1, Ordering::SeqCst);
-            }
-        }
-
         struct PendingMySqlConnectionProbe {
             started: UnboundedSender<Arc<ConnectionEndpoint>>,
             dropped: Arc<AtomicUsize>,
@@ -1414,7 +1390,7 @@ mod tests {
                 &self,
                 endpoint: &ConnectionEndpoint,
             ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
-                let _drop_signal = DropSignal(Arc::clone(&self.dropped));
+                let _drop_signal = DropCounter(Arc::clone(&self.dropped));
                 self.started
                     .send(Arc::new(endpoint.clone()))
                     .expect("probe receiver should stay alive");
@@ -1428,7 +1404,7 @@ mod tests {
                 &self,
                 endpoint: &ConnectionEndpoint,
             ) -> Result<DatabaseMetadata, DbOperationError> {
-                let _drop_signal = DropSignal(Arc::clone(&self.dropped));
+                let _drop_signal = DropCounter(Arc::clone(&self.dropped));
                 self.started
                     .send(Arc::new(endpoint.clone()))
                     .expect("metadata receiver should stay alive");
@@ -1817,14 +1793,6 @@ mod tests {
         use crate::ports::outbound::DbOperationError;
         use crate::update::reducer::reduce;
 
-        struct DropSignal(Arc<AtomicUsize>);
-
-        impl Drop for DropSignal {
-            fn drop(&mut self) {
-                self.0.fetch_add(1, Ordering::SeqCst);
-            }
-        }
-
         struct PendingSmartErProvider {
             started: UnboundedSender<Arc<ConnectionEndpoint>>,
             dropped: Arc<AtomicUsize>,
@@ -1836,7 +1804,7 @@ mod tests {
                 &self,
                 endpoint: &ConnectionEndpoint,
             ) -> Result<DatabaseMetadata, DbOperationError> {
-                let _guard = DropSignal(Arc::clone(&self.dropped));
+                let _guard = DropCounter(Arc::clone(&self.dropped));
                 self.started.send(Arc::new(endpoint.clone())).ok();
                 pending().await
             }

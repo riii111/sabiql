@@ -111,14 +111,7 @@ mod tests {
     use tokio::time::{Duration, timeout};
 
     use super::*;
-
-    struct DropSignal(Arc<AtomicUsize>);
-
-    impl Drop for DropSignal {
-        fn drop(&mut self) {
-            self.0.fetch_add(1, Ordering::SeqCst);
-        }
-    }
+    use crate::cmd::test_fixtures::DropCounter;
 
     #[tokio::test]
     async fn tracks_four_concurrent_prefetch_tasks_and_cleans_them_up() {
@@ -129,7 +122,7 @@ mod tests {
         for _ in 0..4 {
             let (started_tx, started_rx) = oneshot::channel();
             started.push(started_rx);
-            let guard = DropSignal(Arc::clone(&dropped));
+            let guard = DropCounter(Arc::clone(&dropped));
             MetadataTaskRegistry::spawn(&registry, async move {
                 let _guard = guard;
                 started_tx.send(()).ok();
@@ -155,7 +148,7 @@ mod tests {
     async fn reaps_completed_task_from_registry() {
         let registry = Arc::new(MetadataTaskRegistry::default());
         let reaped = Arc::new(AtomicUsize::new(0));
-        let reaped_signal = DropSignal(Arc::clone(&reaped));
+        let reaped_signal = DropCounter(Arc::clone(&reaped));
         MetadataTaskRegistry::spawn(&registry, async move {
             std::panic::panic_any(reaped_signal);
         });

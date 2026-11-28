@@ -1,6 +1,5 @@
 use crate::tests::harness;
 
-use harness::endpoint;
 use harness::fixtures;
 use harness::{
     create_test_state, create_test_terminal, create_test_terminal_sized, postgres_connected_state,
@@ -23,6 +22,8 @@ use sabiql_app::policy::write::write_guardrails::{
 };
 use sabiql_app::ports::outbound::{ConnectionFailureKind, DbOperationError, DdlGenerator};
 use sabiql_app::services::AppServices;
+use sabiql_domain::test_support::endpoint;
+use sabiql_domain::test_support::table;
 use sabiql_domain::{
     ColumnAttributes, CommandTag, DatabaseType, FkAction, ForeignKey, Index, IndexAttributes,
     IndexType, QuerySource, Table,

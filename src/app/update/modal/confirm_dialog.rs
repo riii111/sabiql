@@ -12,7 +12,7 @@ pub(in crate::update) fn scroll_confirm_dialog(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match amount {
         ScrollAmount::Line => {
             state.confirm_dialog.scroll_preview(direction);
@@ -22,7 +22,6 @@ pub(in crate::update) fn scroll_confirm_dialog(
             "unsupported ConfirmDialog scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Instant) -> Vec<Effect> {

@@ -1,4 +1,3 @@
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
@@ -20,7 +19,7 @@ pub(in crate::update) fn scroll_inspector(
     direction: ScrollDirection,
     amount: ScrollAmount,
     services: &AppServices,
-) -> Vec<Effect> {
+) {
     match (direction, amount) {
         (ScrollDirection::Up | ScrollDirection::Down, ScrollAmount::Line) => {
             let max = inspector_max_scroll(state, services);
@@ -75,7 +74,6 @@ pub(in crate::update) fn scroll_inspector(
             "unsupported Inspector scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 #[cfg(test)]

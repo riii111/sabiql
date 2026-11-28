@@ -58,21 +58,14 @@ mod tests {
     use tokio::sync::oneshot;
 
     use super::*;
-
-    struct DropSignal(Arc<AtomicBool>);
-
-    impl Drop for DropSignal {
-        fn drop(&mut self) {
-            self.0.store(true, Ordering::SeqCst);
-        }
-    }
+    use crate::cmd::test_fixtures::DropFlag;
 
     #[tokio::test]
     async fn cancel_drops_active_task() {
         let owner = SingleTaskOwner::default();
         let dropped = Arc::new(AtomicBool::new(false));
         let (started_tx, started_rx) = oneshot::channel();
-        let guard = DropSignal(Arc::clone(&dropped));
+        let guard = DropFlag(Arc::clone(&dropped));
 
         owner
             .replace(async move {
@@ -93,7 +86,7 @@ mod tests {
         let owner = SingleTaskOwner::default();
         let dropped = Arc::new(AtomicBool::new(false));
         let (started_tx, started_rx) = oneshot::channel();
-        let first_guard = DropSignal(Arc::clone(&dropped));
+        let first_guard = DropFlag(Arc::clone(&dropped));
 
         owner
             .replace(async move {

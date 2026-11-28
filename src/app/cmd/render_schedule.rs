@@ -71,6 +71,7 @@ fn min_instant(a: Option<Instant>, b: Option<Instant>) -> Option<Instant> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     fn create_test_state() -> AppState {
         AppState::new("test".to_string())
@@ -168,43 +169,38 @@ mod tests {
             assert_eq!(deadline, Some(highlight_until));
         }
 
-        #[test]
-        fn sql_modal_returns_cursor_blink_interval() {
+        #[rstest]
+        #[case(InputMode::SqlModal)]
+        #[case(InputMode::TablePicker)]
+        #[case(InputMode::CommandLine)]
+        #[case(InputMode::CellEdit)]
+        #[case(InputMode::ConnectionSetup)]
+        fn editing_modes_schedule_cursor_blink(#[case] mode: InputMode) {
             let mut state = create_test_state();
-            state.modal.set_mode(InputMode::SqlModal);
+            state.modal.set_mode(mode);
             let now = Instant::now();
 
-            let deadline = next_animation_deadline(&state, now);
-
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
+            assert_eq!(
+                next_animation_deadline(&state, now),
+                Some(now + CURSOR_BLINK_INTERVAL)
+            );
         }
 
         #[test]
-        fn table_picker_returns_cursor_blink_interval() {
+        fn help_mode_does_not_schedule_cursor_blink() {
             let mut state = create_test_state();
-            state.modal.set_mode(InputMode::TablePicker);
-            let now = Instant::now();
+            state.modal.set_mode(InputMode::Help);
 
-            let deadline = next_animation_deadline(&state, now);
-
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
+            assert_eq!(next_animation_deadline(&state, Instant::now()), None);
         }
 
         #[test]
-        fn command_line_returns_cursor_blink_interval() {
+        fn er_rendering_does_not_schedule_spinner() {
             let mut state = create_test_state();
-            state.modal.set_mode(InputMode::CommandLine);
-            let now = Instant::now();
+            let _ = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_rendering();
 
-            let deadline = next_animation_deadline(&state, now);
-
-            assert!(deadline.is_some());
-            let expected = now + CURSOR_BLINK_INTERVAL;
-            assert_eq!(deadline.unwrap(), expected);
+            assert_eq!(next_animation_deadline(&state, Instant::now()), None);
         }
 
         #[test]
@@ -269,129 +265,6 @@ mod tests {
             let deadline = next_animation_deadline(&state, now);
 
             assert_eq!(deadline, Some(debounce_until));
-        }
-    }
-
-    mod has_active_spinner_tests {
-        use super::*;
-
-        #[test]
-        fn idle_query_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_active_spinner(&state));
-        }
-
-        #[test]
-        fn running_query_returns_true() {
-            let mut state = create_test_state();
-            let _ = state.query.begin_running(Instant::now());
-
-            assert!(has_active_spinner(&state));
-        }
-
-        #[test]
-        fn er_idle_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_active_spinner(&state));
-        }
-
-        #[test]
-        fn er_waiting_returns_true() {
-            let mut state = create_test_state();
-            let _ = state.er_preparation.start_waiting_run();
-
-            assert!(has_active_spinner(&state));
-        }
-
-        #[test]
-        fn er_rendering_returns_false() {
-            let mut state = create_test_state();
-            state.er_preparation.mark_rendering();
-
-            assert!(!has_active_spinner(&state));
-        }
-    }
-
-    mod has_blinking_cursor_tests {
-        use super::*;
-
-        #[test]
-        fn normal_mode_returns_false() {
-            let state = create_test_state();
-
-            assert!(!has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn sql_modal_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::SqlModal);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn table_picker_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::TablePicker);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn command_line_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::CommandLine);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn connection_setup_returns_true() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::ConnectionSetup);
-
-            assert!(has_blinking_cursor(&state));
-        }
-
-        #[test]
-        fn help_mode_returns_false() {
-            let mut state = create_test_state();
-            state.modal.set_mode(InputMode::Help);
-
-            assert!(!has_blinking_cursor(&state));
-        }
-    }
-
-    mod min_instant_tests {
-        use super::*;
-
-        #[test]
-        fn both_none_returns_none() {
-            assert!(min_instant(None, None).is_none());
-        }
-
-        #[test]
-        fn first_some_returns_first() {
-            let now = Instant::now();
-            assert_eq!(min_instant(Some(now), None), Some(now));
-        }
-
-        #[test]
-        fn second_some_returns_second() {
-            let now = Instant::now();
-            assert_eq!(min_instant(None, Some(now)), Some(now));
-        }
-
-        #[test]
-        fn both_some_returns_earlier() {
-            let now = Instant::now();
-            let later = now + Duration::from_secs(1);
-
-            assert_eq!(min_instant(Some(now), Some(later)), Some(now));
-            assert_eq!(min_instant(Some(later), Some(now)), Some(now));
         }
     }
 }

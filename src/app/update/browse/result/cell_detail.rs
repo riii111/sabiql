@@ -49,7 +49,7 @@ pub(in crate::update) fn scroll_cell_detail(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match direction {
         ScrollDirection::Down | ScrollDirection::Up => {
             state.cell_detail.scroll(direction, amount);
@@ -59,7 +59,6 @@ pub(in crate::update) fn scroll_cell_detail(
             "unsupported CellDetail scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String, Option<String>)> {
