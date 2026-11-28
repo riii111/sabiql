@@ -335,6 +335,8 @@ impl EffectRunner {
                     limit,
                     offset,
                 );
+                // The preview supersedes the running query, which is stopped here because the detail task does not own the query slot.
+                self.query_tasks.cancel().await;
                 let tx = self.action_tx.clone();
                 // The detail task owns the preview so a later query cannot abort the detail, and the detail is sent first so the preview never shows before it settles.
                 self.table_detail_tasks
@@ -458,14 +460,9 @@ impl EffectRunner {
             }
 
             Effect::SaveSettings { settings } => {
-                let store = Arc::clone(&self.settings_store);
-                self.spawn_report(async move {
-                    tokio::task::spawn_blocking(move || {
-                        cmd_settings::save(settings, store.as_ref())
-                    })
-                    .await
-                    .expect("settings save task panicked")
-                });
+                // Saving and reporting in effect order keeps a slower earlier save from overwriting a later one.
+                let action = cmd_settings::save(settings, self.settings_store.as_ref());
+                self.action_tx.send(action).await.ok();
             }
 
             Effect::FetchSqliteDiagnosticsCore { endpoint, run_id } => {
@@ -1165,6 +1162,51 @@ mod tests {
         }
     }
 
+    mod settings_save {
+        use super::*;
+        use crate::model::shared::theme_id::ThemeId;
+        use crate::ports::outbound::AppSettings;
+
+        #[tokio::test]
+        async fn reports_saves_in_effect_order() {
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                tx,
+            );
+            let settings = |theme_id| AppSettings {
+                theme_id,
+                ..AppSettings::default()
+            };
+
+            runner
+                .execute_effects(
+                    vec![
+                        Effect::SaveSettings {
+                            settings: settings(ThemeId::Light),
+                        },
+                        Effect::SaveSettings {
+                            settings: settings(ThemeId::Default),
+                        },
+                    ],
+                    &mut NoopRenderer,
+                    &mut AppState::new("test".to_string()),
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let themes =
+                [rx.try_recv().unwrap(), rx.try_recv().unwrap()].map(|action| match action {
+                    Action::SettingsSaved(Ok(saved)) => saved.theme_id,
+                    other => panic!("expected saved settings, got {other:?}"),
+                });
+            assert_eq!(themes, [ThemeId::Light, ThemeId::Default]);
+        }
+    }
+
     mod table_load {
         use tokio::sync::Notify;
         use tokio::time::{Duration, timeout};
@@ -1212,6 +1254,61 @@ mod tests {
             ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 unreachable!("test only loads a table")
             }
+        }
+
+        #[tokio::test]
+        async fn replaces_the_running_query() {
+            let mut provider = MockMetadataProvider::new();
+            provider
+                .expect_fetch_table_detail()
+                .returning(|_, schema, table| Ok(test_support::table::minimal(schema, table)));
+            let mut executor = MockQueryExecutor::new();
+            executor
+                .expect_execute_preview()
+                .returning(|_, _, _, _, _| Ok(test_fixtures::sample_query_result()));
+            let (tx, _rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(provider),
+                Arc::new(executor),
+                Arc::new(MockConnectionStore::new()),
+                tx,
+            );
+            let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            runner
+                .query_tasks
+                .replace({
+                    let dropped = Arc::clone(&dropped);
+                    async move {
+                        let _guard = DropFlag(dropped);
+                        started_tx.send(()).ok();
+                        std::future::pending::<()>().await;
+                    }
+                })
+                .await;
+            started_rx.await.unwrap();
+
+            runner
+                .execute_effects(
+                    vec![Effect::LoadTable {
+                        endpoint: endpoint::postgres("postgres://localhost/test"),
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                        generation: 1,
+                        detail_run_id: 2,
+                        preview_run_id: 3,
+                        limit: 500,
+                        offset: 0,
+                        target_page: 0,
+                    }],
+                    &mut NoopRenderer,
+                    &mut AppState::new("test".to_string()),
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(dropped.load(std::sync::atomic::Ordering::SeqCst));
         }
 
         #[tokio::test]

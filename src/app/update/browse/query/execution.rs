@@ -1049,6 +1049,40 @@ mod tests {
         use crate::domain::CommandTag;
 
         #[test]
+        fn dml_refresh_waits_for_loading_detail_in_the_same_task() {
+            let (mut state, generation, stale_detail_run_id) =
+                state_with_selected_table(DatabaseType::PostgreSQL);
+            let action = query_completed_action(
+                &mut state,
+                adhoc_result_with_tag(CommandTag::Update(1)),
+                0,
+                None,
+            );
+
+            let effects = route(&mut state, action, Instant::now(), &AppServices::stub());
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::LoadTable {
+                    generation: load_generation,
+                    detail_run_id,
+                    table,
+                    ..
+                }] if *load_generation == generation
+                    && *detail_run_id != stale_detail_run_id
+                    && table == "users"
+            ));
+            assert!(
+                state
+                    .session
+                    .is_current_table_detail_run(match &effects[0] {
+                        Effect::LoadTable { detail_run_id, .. } => *detail_run_id,
+                        _ => unreachable!(),
+                    })
+            );
+        }
+
+        #[test]
         fn dml_without_table_selected_emits_no_effects() {
             let mut state = create_test_state();
             let action = query_completed_action(

@@ -9,6 +9,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::connection::ConnectionEndpoint;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+use crate::model::browse::session::TableDetailState;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 fn begin_preview_run(state: &mut AppState, now: Instant) -> Option<(Arc<ConnectionEndpoint>, u64)> {
@@ -30,6 +31,26 @@ pub(super) fn preview_effect_for_current_table(
     generation: u64,
 ) -> Option<Effect> {
     let (endpoint, run_id) = begin_preview_run(state, now)?;
+    // A preview shown before the selected table's detail settles would be read without its columns, so the detail is fetched again in the same ordered task.
+    if generation == state.session.selection_generation()
+        && state.session.selected_table_key().is_some()
+        && matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Loading
+        )
+    {
+        return Some(Effect::LoadTable {
+            endpoint,
+            schema: state.query.pagination.schema().to_string(),
+            table: state.query.pagination.table().to_string(),
+            generation,
+            detail_run_id: state.session.begin_table_detail_run(),
+            preview_run_id: run_id,
+            limit: PREVIEW_PAGE_SIZE,
+            offset: target_page * PREVIEW_PAGE_SIZE,
+            target_page,
+        });
+    }
     Some(Effect::ExecutePreview {
         endpoint,
         schema: state.query.pagination.schema().to_string(),
