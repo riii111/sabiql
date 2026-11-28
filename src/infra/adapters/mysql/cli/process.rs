@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{DatabaseDiagnostic, RefreshScope};
 
-use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args, mysql_query_args};
+use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args};
 #[cfg(not(unix))]
 use super::error::classify_mysql_query_failure;
 use super::error::{
@@ -82,13 +82,6 @@ pub(in crate::adapters::mysql) struct MySqlProcess {
 }
 
 impl MySqlProcess {
-    pub(in crate::adapters::mysql) fn spawn_with_program(
-        program: &OsStr,
-        option_file: &std::path::Path,
-    ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_query_args(program, mysql_query_args(option_file))
-    }
-
     pub(in crate::adapters::mysql) fn spawn_with_adhoc_program(
         program: &OsStr,
         option_file: &std::path::Path,

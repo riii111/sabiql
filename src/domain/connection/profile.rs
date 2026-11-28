@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-#[cfg(any(test, feature = "test-support"))]
-use super::config::PostgresConnectionConfig;
 use super::config::{
-    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, MySqlTransport, SqliteConnectionConfig,
+    ConnectionConfig, MySqlConnectionConfig, MySqlTransport, SqliteConnectionConfig,
     SqliteConnectionConfigError,
 };
+#[cfg(any(test, feature = "test-support"))]
+use super::config::{MySqlSslMode, PostgresConnectionConfig};
 use super::database_type::DatabaseType;
 use super::id::ConnectionId;
 use super::name::{ConnectionName, ConnectionNameError};
