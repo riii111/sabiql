@@ -56,7 +56,7 @@ fn error_message_in_footer() {
         .messages
         .set_error("Connection failed: timeout".to_string());
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_footer_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }

@@ -9,7 +9,8 @@ use ratatui::Terminal;
 use ratatui::backend::Backend;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
-use ratatui::layout::Position;
+use ratatui::layout::{Position, Rect};
+use ratatui::style::Modifier;
 
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::connection::setup::ConnectionField;
@@ -118,7 +119,7 @@ pub fn render_and_get_buffer_at_with_theme(
     )
 }
 
-pub fn render_and_get_buffer_at_with_theme_and_services(
+fn render_and_get_buffer_at_with_theme_and_services(
     terminal: &mut Terminal<TestBackend>,
     state: &mut AppState,
     now: Instant,
@@ -144,7 +145,7 @@ pub fn render_and_get_buffer_at_with_theme_and_services(
 
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
     let buffer = render_and_get_buffer(terminal, state);
-    buffer_to_string(&buffer)
+    area_to_string(&buffer, buffer.area)
 }
 
 pub fn render_to_string_with_services(
@@ -152,14 +153,22 @@ pub fn render_to_string_with_services(
     state: &mut AppState,
     services: &AppServices,
 ) -> String {
-    let buffer = render_and_get_buffer_at_with_theme_and_services(
+    let buffer = render_and_get_buffer_with_services(terminal, state, services);
+    area_to_string(&buffer, buffer.area)
+}
+
+pub fn render_and_get_buffer_with_services(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+    services: &AppServices,
+) -> Buffer {
+    render_and_get_buffer_at_with_theme_and_services(
         terminal,
         state,
         test_instant(),
         palette_for(state.ui.theme_id),
         services,
-    );
-    buffer_to_string(&buffer)
+    )
 }
 
 pub fn render_and_get_cursor_position(
@@ -170,18 +179,48 @@ pub fn render_and_get_cursor_position(
     terminal.backend_mut().get_cursor_position().unwrap()
 }
 
-fn buffer_to_string(buffer: &Buffer) -> String {
-    let mut result = String::new();
-    for y in 0..buffer.area.height {
-        for x in 0..buffer.area.width {
-            let cell = buffer.cell((x, y)).unwrap();
-            result.push_str(cell.symbol());
-        }
-        if y < buffer.area.height - 1 {
-            result.push('\n');
-        }
-    }
-    result
+pub fn render_modal_to_string(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+) -> String {
+    let buffer = render_and_get_buffer(terminal, state);
+    modal_contents(&buffer)
+}
+
+pub fn modal_contents(buffer: &Buffer) -> String {
+    // The scrim dims the background, so the undimmed cells bound the visible modal.
+    let area = buffer
+        .area
+        .positions()
+        .filter(|&position| !buffer[position].modifier.contains(Modifier::DIM))
+        .map(|position| Rect::new(position.x, position.y, 1, 1))
+        .reduce(Rect::union)
+        .expect("expected a visible modal");
+    area_to_string(buffer, area)
+}
+
+pub fn render_footer_to_string(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+) -> String {
+    let buffer = render_and_get_buffer(terminal, state);
+    let footer = buffer
+        .area
+        .rows()
+        .nth_back(1)
+        .expect("footer above command line");
+    area_to_string(&buffer, footer).trim_end().to_string()
+}
+
+fn area_to_string(buffer: &Buffer, area: Rect) -> String {
+    area.rows()
+        .map(|row| {
+            row.positions()
+                .map(|position| buffer[position].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn postgres_connected_state() -> AppState {

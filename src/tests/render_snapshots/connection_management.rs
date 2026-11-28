@@ -86,7 +86,7 @@ fn connection_selector_with_service_entries() {
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -107,7 +107,7 @@ fn connection_selector_with_long_service_name() {
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -134,7 +134,7 @@ fn connection_selector_with_active_service() {
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -152,7 +152,7 @@ fn connection_selector_with_multibyte_service_name() {
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -170,7 +170,7 @@ fn confirm_dialog_delete_active_connection() {
         ConfirmIntent::DeleteConnection(connection_id),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
@@ -188,7 +188,7 @@ fn confirm_dialog_delete_inactive_connection() {
         ConfirmIntent::DeleteConnection(target_id),
     );
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = render_modal_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
 }
