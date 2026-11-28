@@ -6,7 +6,7 @@ use tempfile::TempDir;
 
 use super::super::policy::MySqlExecutionResult;
 use super::super::xml::MySqlResultSet;
-use super::adhoc::run_mysql_adhoc_with_program_and_statements;
+use super::adhoc::test_support::run_mysql_adhoc_with_program_and_statements;
 use super::metadata::{
     mysql_metadata_columns_external_with_program,
     run_mysql_metadata_query_with_read_only_session_with_timeout,

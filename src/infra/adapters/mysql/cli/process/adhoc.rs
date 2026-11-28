@@ -59,28 +59,6 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_server_capabilities
     .await
 }
 
-#[allow(
-    dead_code,
-    reason = "shared by MySQL process tests and the test-support feature"
-)]
-pub(super) async fn run_mysql_adhoc_with_program_and_statements(
-    program: &OsStr,
-    option_file: &Path,
-    statements: &[MySqlStatement],
-    access_mode: AccessMode,
-    execution_timeout: Duration,
-) -> Result<MySqlExecutionResult, DbOperationError> {
-    run_mysql_adhoc_with_program_and_capabilities(
-        program,
-        option_file,
-        statements,
-        access_mode,
-        execution_timeout,
-        MySqlServerCapabilities::default(),
-    )
-    .await
-}
-
 async fn run_mysql_adhoc_with_program_and_capabilities(
     program: &OsStr,
     option_file: &Path,
@@ -366,4 +344,27 @@ async fn run_mysql_adhoc_process(
         refresh_scope,
         diagnostics,
     })
+}
+
+#[cfg(test)]
+pub(super) mod test_support {
+    use super::*;
+
+    pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_program_and_statements(
+        program: &OsStr,
+        option_file: &Path,
+        statements: &[MySqlStatement],
+        access_mode: AccessMode,
+        execution_timeout: Duration,
+    ) -> Result<MySqlExecutionResult, DbOperationError> {
+        run_mysql_adhoc_with_program_and_capabilities(
+            program,
+            option_file,
+            statements,
+            access_mode,
+            execution_timeout,
+            MySqlServerCapabilities::default(),
+        )
+        .await
+    }
 }

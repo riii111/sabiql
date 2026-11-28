@@ -8,8 +8,12 @@ mod metadata;
 mod option_file;
 mod sql;
 
-#[cfg(feature = "test-support")]
-pub mod test_support;
+#[cfg(test)]
+mod integration_harness;
+#[cfg(test)]
+mod integration_tests;
+#[cfg(test)]
+mod test_support;
 
 pub use adapter::MySqlAdapter;
 pub(in crate::adapters) use dsn::build_mysql_dsn;
