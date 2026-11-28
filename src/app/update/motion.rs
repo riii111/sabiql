@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn second_page_jump_mid_animation_continues_from_drawn_offset() {
+    fn page_jump_before_any_frame_retargets_from_input_time() {
         let mut state = motion_state();
         let start = Instant::now();
         let probe = MotionProbe::capture(&state, &page_down());

@@ -89,7 +89,8 @@ impl ModalAfterimage {
                     continue;
                 };
                 // The scrim is rebuilt over the current panes, which may have changed since the modal closed.
-                if cell != under && !is_scrim_cell(cell, under, theme) {
+                // The scrim restyles every cell, so a cell left equal to the panes is one the modal cleared and still covers.
+                if !is_scrim_cell(cell, under, theme) {
                     self.cells.push((x, y, cell.clone()));
                 }
             }
@@ -429,6 +430,25 @@ mod tests {
 
             let positions: Vec<_> = afterimage.cells.iter().map(|(x, y, _)| (*x, *y)).collect();
             assert_eq!(positions, vec![(2, 0), (3, 0)]);
+        }
+
+        #[test]
+        fn capture_keeps_blank_cells_the_modal_cleared() {
+            let mut panes = buffer();
+            panes.set_string(0, 1, " ", Style::default());
+            let mut with_modal = panes.clone();
+            with_modal.set_style(
+                with_modal.area,
+                Style::default()
+                    .fg(THEME.semantic.text.muted)
+                    .add_modifier(Modifier::DIM),
+            );
+            with_modal[(5, 1)].reset();
+            let mut afterimage = ModalAfterimage::default();
+
+            afterimage.capture(&with_modal, &panes, THEME);
+
+            assert!(afterimage.cells.iter().any(|(x, y, _)| (*x, *y) == (5, 1)));
         }
 
         #[test]

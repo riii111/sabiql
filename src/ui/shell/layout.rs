@@ -287,7 +287,11 @@ impl MainLayout {
             result: ResultLayout {
                 viewport_plan: result_plan,
                 widths_cache: result_widths_cache,
-                pane_height: full_result.height,
+                pane_height: if state.ui.is_focus_mode() {
+                    main_area.height
+                } else {
+                    full_result.height
+                },
             },
             // Panes collapsing into focus mode are on their way out, so the pointer cannot focus them.
             pane_areas: if state.ui.is_focus_mode() {
