@@ -163,6 +163,19 @@ mod tests {
         }
 
         #[test]
+        fn missed_afterglow_end_still_requests_a_final_frame() {
+            let mut state = create_test_state();
+            state.motion.enable();
+            let now = Instant::now();
+            state.flash_timers.set(FlashId::Ddl, now);
+            let late = now + Duration::from_secs(1);
+
+            let deadline = next_animation_deadline(&state, late).expect("final frame");
+
+            assert!(deadline <= late);
+        }
+
+        #[test]
         fn fading_result_flash_schedules_a_future_frame() {
             let mut state = create_test_state();
             state.motion.enable();

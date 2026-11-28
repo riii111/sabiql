@@ -66,7 +66,8 @@ pub(super) fn apply_modal_fade(
             if is_scrim_cell(cell, under, theme) {
                 fade_scrim_cell(cell, under, progress, theme);
             } else {
-                fade_overlay_cell(cell, progress, theme);
+                let modal = cell.clone();
+                draw_fading_modal_cell(cell, &modal, under, progress, theme);
             }
         }
     }
@@ -106,30 +107,48 @@ pub(super) fn apply_modal_fade_out(
     visibility: f32,
     theme: &ThemePalette,
 ) {
+    let panes = buf.clone();
     let area = buf.area;
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
             if let Some(cell) = buf.cell_mut((x, y)) {
-                let under = cell.clone();
-                cell.fg = theme.semantic.text.muted;
-                cell.modifier |= Modifier::DIM;
-                fade_scrim_cell(cell, &under, visibility, theme);
+                draw_fading_scrim_cell(cell, &panes[(x, y)], visibility, theme);
             }
         }
     }
-    // A cell shows either the modal or the panes, so the modal fades over the first half and then gives way to the dimmed panes.
+    for (x, y, modal) in &afterimage.cells {
+        if let (Some(cell), Some(under)) = (buf.cell_mut((*x, *y)), panes.cell((*x, *y))) {
+            draw_fading_modal_cell(cell, modal, under, visibility, theme);
+        }
+    }
+}
+
+fn draw_fading_modal_cell(
+    cell: &mut Cell,
+    modal: &Cell,
+    under: &Cell,
+    visibility: f32,
+    theme: &ThemePalette,
+) {
+    // A cell shows either the modal or the panes, so the panes stay under the scrim until halfway and the modal takes the second half.
     if visibility < MODAL_HANDOFF {
+        draw_fading_scrim_cell(cell, under, visibility, theme);
         return;
     }
     let progress = (visibility - MODAL_HANDOFF) / (1.0 - MODAL_HANDOFF);
-    for (x, y, modal_cell) in &afterimage.cells {
-        if let Some(cell) = buf.cell_mut((*x, *y)) {
-            let under_bg = cell.bg;
-            *cell = modal_cell.clone();
-            fade_overlay_cell(cell, progress, theme);
-            cell.bg = blend(under_bg, cell.bg, progress);
-        }
+    *cell = modal.clone();
+    fade_overlay_cell(cell, progress, theme);
+    // A background of unknown RGB cannot blend, so the modal keeps its own background from the start.
+    if let (Color::Rgb(..), Color::Rgb(..)) = (under.bg, modal.bg) {
+        cell.bg = blend(under.bg, modal.bg, progress);
     }
+}
+
+fn draw_fading_scrim_cell(cell: &mut Cell, under: &Cell, visibility: f32, theme: &ThemePalette) {
+    *cell = under.clone();
+    cell.fg = theme.semantic.text.muted;
+    cell.modifier |= Modifier::DIM;
+    fade_scrim_cell(cell, under, visibility, theme);
 }
 
 fn is_scrim_cell(cell: &Cell, under: &Cell, theme: &ThemePalette) -> bool {
@@ -322,9 +341,25 @@ mod tests {
                 Style::default().fg(THEME.semantic.text.accent),
             );
 
-            apply_modal_fade(&mut buf, &background, 0.0, THEME);
+            apply_modal_fade(&mut buf, &background, MODAL_HANDOFF, THEME);
 
             assert_eq!(buf[(0, 1)].fg, THEME.semantic.text.muted);
+        }
+
+        #[test]
+        fn modal_stays_hidden_until_the_handoff() {
+            let background = background();
+            let mut buf = scrimmed(&background);
+            buf.set_string(
+                0,
+                1,
+                "Help",
+                Style::default().fg(THEME.semantic.text.accent),
+            );
+
+            apply_modal_fade(&mut buf, &background, MODAL_HANDOFF / 2.0, THEME);
+
+            assert_eq!(buf[(0, 1)].symbol(), background[(0, 1)].symbol());
         }
 
         #[test]
@@ -339,7 +374,7 @@ mod tests {
             let mut buf = scrimmed(&background);
             buf[(3, 2)].reset();
 
-            apply_modal_fade(&mut buf, &background, 0.0, THEME);
+            apply_modal_fade(&mut buf, &background, MODAL_HANDOFF, THEME);
 
             assert_eq!(buf[(3, 2)], Cell::default());
         }
@@ -405,6 +440,19 @@ mod tests {
             assert_eq!(buf[(2, 0)].symbol(), "M");
             assert_eq!(buf[(2, 0)].fg, Color::Rgb(250, 250, 250));
             assert!(buf[(0, 0)].modifier.contains(Modifier::DIM));
+        }
+
+        #[test]
+        fn closing_starts_from_the_last_opening_frame() {
+            let panes = panes();
+            let visibility = 0.6;
+            let mut opening = with_modal(&panes);
+            apply_modal_fade(&mut opening, &panes, visibility, THEME);
+            let mut closing = panes.clone();
+
+            apply_modal_fade_out(&mut closing, &afterimage(), visibility, THEME);
+
+            assert_eq!(closing, opening);
         }
 
         #[test]

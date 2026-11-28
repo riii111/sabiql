@@ -30,7 +30,8 @@ pub fn flash_phase(until: Instant, now: Instant, animated: bool) -> FlashPhase {
 
 pub fn afterglow_frame(until: Instant, now: Instant) -> Option<Instant> {
     let ends_at = until + FLASH_AFTERGLOW;
-    (until <= now && now < ends_at).then(|| (now + FRAME_INTERVAL).min(ends_at))
+    // A finished afterglow keeps asking for its end frame until a tick clears it, so input racing the last frame cannot leave the text tinted.
+    (until <= now).then(|| (now + FRAME_INTERVAL).min(ends_at))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -201,6 +202,10 @@ mod tests {
             Some(now + FLASH_AFTERGLOW)
         );
         assert_eq!(afterglow_frame(now + FLASH_DURATION, now), None);
+        assert_eq!(
+            afterglow_frame(now, now + FLASH_AFTERGLOW + FRAME_INTERVAL),
+            Some(now + FLASH_AFTERGLOW)
+        );
     }
 
     #[test]

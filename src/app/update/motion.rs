@@ -45,7 +45,11 @@ impl MotionProbe {
                 .motion
                 .begin_focus(self.focused_pane, state.ui.focused_pane(), now);
         }
-        if let Some(pane) = state.motion.scrolling_pane() {
+        // A new page jump on the same pane retargets from the drawn offset, so only other changes end the tween here.
+        let retargets = self.scroll_before.map(|(pane, _)| pane);
+        if let Some(pane) = state.motion.scrolling_pane()
+            && Some(pane) != retargets
+        {
             let actual = scroll_offset(state, pane);
             state.motion.settle_scroll(actual);
         }
@@ -252,6 +256,53 @@ mod tests {
         probe.record(&mut state, now);
 
         assert_eq!(state.motion.scroll_offset(ScrolledPane::Help, 12, now), 0);
+    }
+
+    #[test]
+    fn second_page_jump_mid_animation_continues_from_drawn_offset() {
+        let mut state = motion_state();
+        let start = Instant::now();
+        let probe = MotionProbe::capture(&state, &page_down());
+        state.result_interaction.set_scroll_offset(20);
+        probe.record(&mut state, start);
+        let midway = start + Duration::from_millis(40);
+        let drawn = state.motion.scroll_offset(ScrolledPane::Result, 20, midway);
+
+        let probe = MotionProbe::capture(&state, &page_down());
+        state.result_interaction.set_scroll_offset(40);
+        probe.record(&mut state, midway);
+
+        assert!(drawn < 20, "drawn offset was {drawn}");
+        assert_eq!(
+            state.motion.scroll_offset(ScrolledPane::Result, 40, midway),
+            drawn
+        );
+    }
+
+    #[test]
+    fn line_scroll_after_page_jump_ends_the_animation() {
+        let mut state = motion_state();
+        let now = Instant::now();
+        let probe = MotionProbe::capture(&state, &page_down());
+        state.result_interaction.set_scroll_offset(20);
+        probe.record(&mut state, now);
+        let line_up = Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        };
+
+        let probe = MotionProbe::capture(&state, &line_up);
+        state.result_interaction.set_scroll_offset(19);
+        probe.record(&mut state, now);
+        let probe = MotionProbe::capture(&state, &line_up);
+        state.result_interaction.set_scroll_offset(20);
+        probe.record(&mut state, now);
+
+        assert_eq!(
+            state.motion.scroll_offset(ScrolledPane::Result, 20, now),
+            20
+        );
     }
 
     #[test]

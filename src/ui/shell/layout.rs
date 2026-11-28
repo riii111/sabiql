@@ -79,9 +79,10 @@ impl MainLayout {
         .areas(area);
 
         Header::render(frame, header_area, state, theme);
-        let browse = Self::render_browse_mode(frame, main_area, state, services, now, theme);
+        let (browse, drawn_panes) =
+            Self::render_browse_mode(frame, main_area, state, services, now, theme);
         if let Some(transition) = state.motion.focus_transition(now) {
-            apply_focus_transition(frame.buffer_mut(), &browse.pane_areas, transition, theme);
+            apply_focus_transition(frame.buffer_mut(), &drawn_panes, transition, theme);
         }
 
         Footer::render(frame, footer_area, state, time_ms, theme);
@@ -216,7 +217,7 @@ impl MainLayout {
         services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
-    ) -> BrowseLayout {
+    ) -> (BrowseLayout, PaneAreas) {
         let collapse = state
             .motion
             .focus_mode_collapse(now)
@@ -224,20 +225,24 @@ impl MainLayout {
         if collapse >= 1.0 {
             let (result_plan, result_widths_cache) =
                 ResultPane::render(frame, main_area, state, now, theme);
-            return BrowseLayout {
-                explorer: ExplorerLayout::default(),
-                inspector: InspectorLayout::default(),
-                result: ResultLayout {
-                    viewport_plan: result_plan,
-                    widths_cache: result_widths_cache,
-                    pane_height: main_area.height,
-                },
-                pane_areas: PaneAreas {
-                    explorer: None,
-                    inspector: None,
-                    result: Some(pane_area(main_area)),
-                },
+            let panes = PaneAreas {
+                explorer: None,
+                inspector: None,
+                result: Some(pane_area(main_area)),
             };
+            return (
+                BrowseLayout {
+                    explorer: ExplorerLayout::default(),
+                    inspector: InspectorLayout::default(),
+                    result: ResultLayout {
+                        viewport_plan: result_plan,
+                        widths_cache: result_widths_cache,
+                        pane_height: main_area.height,
+                    },
+                    pane_areas: panes,
+                },
+                panes,
+            );
         }
 
         let [left_area, right_area] =
@@ -263,7 +268,12 @@ impl MainLayout {
         let (result_plan, result_widths_cache) =
             ResultPane::render(frame, result_area, state, now, theme);
 
-        BrowseLayout {
+        let drawn_panes = PaneAreas {
+            explorer: left_area.map(pane_area),
+            inspector: inspector_area.map(pane_area),
+            result: Some(pane_area(result_area)),
+        };
+        let browse = BrowseLayout {
             explorer: explorer.unwrap_or_default(),
             inspector: inspector.unwrap_or_default(),
             result: ResultLayout {
@@ -276,16 +286,13 @@ impl MainLayout {
                 PaneAreas {
                     explorer: None,
                     inspector: None,
-                    result: Some(pane_area(result_area)),
+                    ..drawn_panes
                 }
             } else {
-                PaneAreas {
-                    explorer: left_area.map(pane_area),
-                    inspector: inspector_area.map(pane_area),
-                    result: Some(pane_area(result_area)),
-                }
+                drawn_panes
             },
-        }
+        };
+        (browse, drawn_panes)
     }
 }
 
