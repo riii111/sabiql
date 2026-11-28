@@ -531,6 +531,48 @@ mod tests {
         }
 
         #[test]
+        fn invalid_foreign_key_action_keeps_parse_details() {
+            let json = build_combined_json(
+                true,
+                "[]",
+                "[]",
+                r#"[{"name":"fk","from_schema":"public","from_table":"users","from_columns":["org_id"],"to_schema":"public","to_table":"orgs","to_columns":["id"],"on_delete":"x","on_update":"a"}]"#,
+                "null",
+                "[]",
+                "null",
+            );
+
+            let error = PostgresAdapter::parse_table_detail_combined(&json)
+                .err()
+                .expect("invalid foreign key action");
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
+            assert!(
+                error
+                    .masked_details()
+                    .contains("foreign key action parse failed")
+            );
+        }
+
+        #[test]
+        fn invalid_rls_command_keeps_parse_details() {
+            let json = build_combined_json(
+                true,
+                "[]",
+                "[]",
+                "[]",
+                r#"{"enabled":true,"force":false,"policies":[{"name":"p","permissive":true,"roles":[],"cmd":"x"}]}"#,
+                "[]",
+                "null",
+            );
+
+            let error = PostgresAdapter::parse_table_detail_combined(&json)
+                .err()
+                .expect("invalid RLS command");
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
+            assert!(error.masked_details().contains("RLS command parse failed"));
+        }
+
+        #[test]
         fn missing_key_returns_invalid_json_error() {
             let json = r#"{"exists": false, "columns": [], "indexes": [], "foreign_keys": [], "triggers": [], "table_info": null}"#;
             let result = PostgresAdapter::parse_table_detail_combined(json);
