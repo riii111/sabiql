@@ -51,6 +51,15 @@ impl MySqlTransport {
         !matches!(self, Self::Tcp)
     }
 
+    pub const fn allows_ssl_mode(self, mode: MySqlSslMode) -> bool {
+        !matches!(self, Self::NamedPipe)
+            || matches!(mode, MySqlSslMode::Disabled | MySqlSslMode::Preferred)
+    }
+
+    pub fn is_valid_path(path: &str) -> bool {
+        !path.trim().is_empty() && !path.chars().any(char::is_control)
+    }
+
     pub const fn is_supported_on_current_platform(self) -> bool {
         match self {
             Self::Tcp => true,
@@ -372,6 +381,7 @@ impl ConnectionConfig {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub fn as_postgres(&self) -> Option<&PostgresConnectionConfig> {
         match self {
             Self::PostgreSQL(config) => Some(config),
@@ -386,6 +396,7 @@ impl ConnectionConfig {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub fn as_mysql(&self) -> Option<&MySqlConnectionConfig> {
         match self {
             Self::MySQL(config) => Some(config),

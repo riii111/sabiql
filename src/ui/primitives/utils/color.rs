@@ -2,7 +2,7 @@ use ratatui::style::Color;
 
 const MIDPOINT: f32 = 0.5;
 
-pub fn blend(from: Color, to: Color, progress: f32) -> Color {
+pub(crate) fn blend(from: Color, to: Color, progress: f32) -> Color {
     match (from, to) {
         (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) => Color::Rgb(
             mix(r1, r2, progress),

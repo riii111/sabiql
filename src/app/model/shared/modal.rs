@@ -35,7 +35,8 @@ impl ModalState {
         self.mode = target;
     }
 
-    pub fn return_destination(&self) -> InputMode {
+    #[cfg(test)]
+    pub(crate) fn return_destination(&self) -> InputMode {
         self.return_stack
             .last()
             .copied()
@@ -46,13 +47,6 @@ impl ModalState {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn default_mode_is_normal() {
-        let modal = ModalState::default();
-
-        assert_eq!(modal.active_mode(), InputMode::Normal);
-    }
 
     #[test]
     fn set_mode_changes_mode_and_clears_stack() {

@@ -10,13 +10,13 @@ use unicode_width::UnicodeWidthStr;
 use crate::theme::ThemePalette;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CursorKind {
+pub(crate) enum CursorKind {
     Block,
     Insert,
 }
 
 impl CursorKind {
-    pub fn glyph(self) -> &'static str {
+    pub(crate) fn glyph(self) -> &'static str {
         match self {
             Self::Block => " ",
             Self::Insert => "\u{258f}",
@@ -24,14 +24,14 @@ impl CursorKind {
     }
 }
 
-pub fn cursor_style_for(kind: CursorKind, theme: &ThemePalette) -> Style {
+fn cursor_style_for(kind: CursorKind, theme: &ThemePalette) -> Style {
     match kind {
         CursorKind::Block => theme.block_cursor_style(),
         CursorKind::Insert => theme.insert_cursor_style(),
     }
 }
 
-pub fn text_cursor_spans(
+pub(crate) fn text_cursor_spans(
     content: &str,
     cursor: usize,
     viewport_offset: usize,
@@ -48,7 +48,7 @@ pub fn text_cursor_spans(
     )
 }
 
-pub fn text_cursor_spans_with_kind(
+pub(crate) fn text_cursor_spans_with_kind(
     content: &str,
     cursor: usize,
     viewport_offset: usize,
@@ -101,15 +101,7 @@ pub fn text_cursor_spans_with_kind(
     }
 }
 
-pub fn insert_cursor_span(
-    spans: Vec<Span<'static>>,
-    cursor_col: usize,
-    theme: &ThemePalette,
-) -> Vec<Span<'static>> {
-    insert_cursor_span_with_kind(spans, cursor_col, CursorKind::Block, theme)
-}
-
-pub fn insert_cursor_span_with_kind(
+pub(crate) fn insert_cursor_span_with_kind(
     spans: Vec<Span<'static>>,
     cursor_col: usize,
     kind: CursorKind,
@@ -182,7 +174,7 @@ pub fn insert_cursor_span_with_kind(
     output
 }
 
-pub fn set_terminal_cursor(
+pub(crate) fn set_terminal_cursor(
     frame: &mut Frame,
     area: Rect,
     content: &str,
@@ -220,18 +212,18 @@ pub fn set_terminal_cursor(
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ModalTextSurface<'a> {
-    pub content: &'a str,
-    pub cursor_row: usize,
-    pub cursor_col: usize,
-    pub scroll_row: usize,
-    pub cursor_kind: CursorKind,
-    pub empty_placeholder: &'a str,
-    pub base_style: Style,
-    pub current_line_style: Style,
+pub(crate) struct ModalTextSurface<'a> {
+    pub(crate) content: &'a str,
+    pub(crate) cursor_row: usize,
+    pub(crate) cursor_col: usize,
+    pub(crate) scroll_row: usize,
+    pub(crate) cursor_kind: CursorKind,
+    pub(crate) empty_placeholder: &'a str,
+    pub(crate) base_style: Style,
+    pub(crate) current_line_style: Style,
 }
 
-pub fn build_modal_text_surface_lines(
+pub(crate) fn build_modal_text_surface_lines(
     surface: ModalTextSurface<'_>,
     mut line_spans: Vec<Vec<Span<'static>>>,
     theme: &ThemePalette,
@@ -276,7 +268,7 @@ pub fn build_modal_text_surface_lines(
     lines
 }
 
-pub fn render_modal_text_surface(
+pub(crate) fn render_modal_text_surface(
     frame: &mut Frame,
     area: Rect,
     surface: ModalTextSurface<'_>,
@@ -562,7 +554,8 @@ mod tests {
                 ),
             ];
 
-            let inserted = insert_cursor_span(spans, 2, &DEFAULT_THEME);
+            let inserted =
+                insert_cursor_span_with_kind(spans, 2, CursorKind::Block, &DEFAULT_THEME);
 
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "c", "d", "ef"]);
@@ -597,7 +590,8 @@ mod tests {
                 ),
             ];
 
-            let inserted = insert_cursor_span(spans, 2, &DEFAULT_THEME);
+            let inserted =
+                insert_cursor_span_with_kind(spans, 2, CursorKind::Block, &DEFAULT_THEME);
 
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "c", "d"]);
@@ -624,7 +618,8 @@ mod tests {
                     .add_modifier(Modifier::BOLD),
             )];
 
-            let inserted = insert_cursor_span(spans, 0, &DEFAULT_THEME);
+            let inserted =
+                insert_cursor_span_with_kind(spans, 0, CursorKind::Block, &DEFAULT_THEME);
 
             assert_eq!(inserted[0].content.as_ref(), "a");
             assert_eq!(inserted[0].style.bg, Some(DEFAULT_THEME.semantic.cursor.bg));
@@ -648,7 +643,8 @@ mod tests {
                 ),
             ];
 
-            let inserted = insert_cursor_span(spans, 4, &DEFAULT_THEME);
+            let inserted =
+                insert_cursor_span_with_kind(spans, 4, CursorKind::Block, &DEFAULT_THEME);
 
             let texts: Vec<String> = inserted.iter().map(|s| s.content.to_string()).collect();
             assert_eq!(texts, vec!["ab", "cd", " "]);

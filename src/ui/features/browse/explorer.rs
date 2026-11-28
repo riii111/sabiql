@@ -2,7 +2,6 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
@@ -13,14 +12,20 @@ use crate::app::policy::table_kind::{explorer_table_label, max_explorer_table_la
 use crate::app::update::input::keymap::{BrowseShortcut, KeyContext, browse_shortcut};
 use crate::domain::MetadataState;
 use crate::primitives::atoms::Icon;
+use crate::primitives::utils::text_utils::truncate_with_offset;
 use crate::theme::ThemePalette;
 
 use crate::primitives::atoms::panel_block;
 
-pub struct Explorer;
+pub(crate) struct Explorer;
 
 impl Explorer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) -> usize {
+    pub(crate) fn render(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> usize {
         let is_focused = state.ui.focused_pane() == FocusedPane::Explorer;
         let block = panel_block(" [1] Explorer ", is_focused, theme);
         let inner = block.inner(area);
@@ -54,7 +59,7 @@ impl Explorer {
             state.session.active_database_type_or_default(),
         );
         let max_offset = scroll_max_offset(max_name_width, content_width);
-        let h_offset = state.ui.explorer_horizontal_offset().min(max_offset);
+        let h_offset = state.ui.explorer_horizontal_offset.min(max_offset);
 
         let items: Vec<ListItem> = if has_cached_data {
             state
@@ -137,7 +142,7 @@ impl Explorer {
         };
         let mut list_state = ListState::default()
             .with_selected(selected)
-            .with_offset(state.ui.explorer_scroll_offset());
+            .with_offset(state.ui.explorer_scroll_offset);
         frame.render_stateful_widget(list, area, &mut list_state);
 
         // Render scrollbars
@@ -146,7 +151,7 @@ impl Explorer {
             let viewport_size = area.height.saturating_sub(1) as usize; // Reserve for horizontal scrollbar
 
             if total_items > viewport_size {
-                let scroll_offset = state.ui.explorer_scroll_offset();
+                let scroll_offset = state.ui.explorer_scroll_offset;
 
                 use crate::primitives::atoms::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,
@@ -184,27 +189,6 @@ impl Explorer {
         }
         content_width
     }
-}
-
-fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
-    let mut position = 0;
-    let mut visible_width = 0;
-    let mut truncated = String::new();
-
-    for grapheme in s.graphemes(true) {
-        let width = text_display_width(grapheme);
-        if position < offset {
-            position += width;
-            continue;
-        }
-        if visible_width + width > max_width {
-            break;
-        }
-        truncated.push_str(grapheme);
-        visible_width += width;
-    }
-
-    truncated
 }
 
 #[cfg(test)]

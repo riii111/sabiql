@@ -4,7 +4,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::{
-    CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
+    CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionDropdown, ConnectionField,
+    ConnectionSetupState,
 };
 use crate::app::policy::mask_password;
 use crate::app::services::AppServices;
@@ -38,10 +39,10 @@ fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> 
     ])
 }
 
-pub struct ConnectionSetup;
+pub(crate) struct ConnectionSetup;
 
 impl ConnectionSetup {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
         services: &AppServices,
@@ -171,80 +172,56 @@ impl ConnectionSetup {
         let notice_index = field_count + 1 + usize::from(!preview_lines.is_empty());
         frame.render_widget(notice_para, chunks[notice_index]);
 
-        if form_state.database_type_dropdown().is_open()
-            && let Some(field_area) = Self::open_dropdown_field_area(
-                chunks.as_ref(),
-                &visible_fields,
-                ConnectionField::DatabaseType,
-            )
+        if let Some((dropdown, selected_index)) = form_state.open_dropdown()
+            && let Some(field_area) =
+                Self::open_dropdown_field_area(chunks.as_ref(), &visible_fields, dropdown.field())
         {
-            Self::render_dropdown_list(
-                frame,
-                field_area,
-                DatabaseType::all()
-                    .iter()
-                    .map(|database_type| database_type.label()),
-                form_state.database_type_dropdown().selected_index(),
-                theme,
-            );
-        } else if form_state.transport_dropdown().is_open()
-            && let Some(field_area) = Self::open_dropdown_field_area(
-                chunks.as_ref(),
-                visible_fields.as_slice(),
-                ConnectionField::Transport,
-            )
-        {
-            Self::render_dropdown_list(
-                frame,
-                field_area,
-                MySqlTransport::all_variants()
-                    .iter()
-                    .map(|transport| transport.as_str()),
-                form_state.transport_dropdown().selected_index(),
-                theme,
-            );
-        } else if form_state.ssl_dropdown().is_open()
-            && let Some(field_area) = Self::open_dropdown_field_area(
-                chunks.as_ref(),
-                &visible_fields,
-                if form_state.focused_field() == ConnectionField::CleartextAuth {
-                    ConnectionField::CleartextAuth
-                } else {
-                    ConnectionField::SslMode
-                },
-            )
-        {
-            match form_state.database_type() {
-                DatabaseType::MySQL => {
-                    if form_state.focused_field() == ConnectionField::CleartextAuth {
-                        Self::render_dropdown_list(
-                            frame,
-                            field_area,
-                            CLEARTEXT_AUTH_OPTIONS.iter().copied(),
-                            form_state.ssl_dropdown().selected_index(),
-                            theme,
-                        );
-                    } else {
-                        Self::render_dropdown_list(
-                            frame,
-                            field_area,
-                            MySqlSslMode::all_variants()
-                                .iter()
-                                .map(MySqlSslMode::as_str),
-                            form_state.ssl_dropdown().selected_index(),
-                            theme,
-                        );
-                    }
-                }
-                DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+            match dropdown {
+                ConnectionDropdown::DatabaseType => Self::render_dropdown_list(
+                    frame,
+                    field_area,
+                    DatabaseType::all()
+                        .iter()
+                        .map(|database_type| database_type.label()),
+                    selected_index,
+                    theme,
+                ),
+                ConnectionDropdown::Transport => Self::render_dropdown_list(
+                    frame,
+                    field_area,
+                    MySqlTransport::all_variants()
+                        .iter()
+                        .map(|transport| transport.as_str()),
+                    selected_index,
+                    theme,
+                ),
+                ConnectionDropdown::SslMode
+                    if form_state.database_type() == DatabaseType::MySQL =>
+                {
                     Self::render_dropdown_list(
                         frame,
                         field_area,
-                        SslMode::all_variants().iter().map(SslMode::as_str),
-                        form_state.ssl_dropdown().selected_index(),
+                        MySqlSslMode::all_variants()
+                            .iter()
+                            .map(MySqlSslMode::as_str),
+                        selected_index,
                         theme,
                     );
                 }
+                ConnectionDropdown::SslMode => Self::render_dropdown_list(
+                    frame,
+                    field_area,
+                    SslMode::all_variants().iter().map(SslMode::as_str),
+                    selected_index,
+                    theme,
+                ),
+                ConnectionDropdown::CleartextAuth => Self::render_dropdown_list(
+                    frame,
+                    field_area,
+                    CLEARTEXT_AUTH_OPTIONS.iter().copied(),
+                    selected_index,
+                    theme,
+                ),
             }
         }
     }
@@ -715,9 +692,8 @@ mod tests {
         }
         form_state.toggle_focused_dropdown();
         for _ in 0..MySqlSslMode::all_variants().len() {
-            if MySqlSslMode::all_variants().get(form_state.ssl_dropdown().selected_index())
-                == Some(&expected_ssl_mode)
-            {
+            let (_, index) = form_state.open_dropdown().unwrap();
+            if MySqlSslMode::all_variants()[index] == expected_ssl_mode {
                 break;
             }
             form_state.dropdown_next();

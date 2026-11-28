@@ -18,7 +18,7 @@ pub(super) fn handle_mouse_event(input: MouseInput, state: &AppState) -> Action 
 
 fn browse_mouse_action(input: MouseInput, state: &AppState) -> Action {
     // The pane under the pointer reacts even when another pane has keyboard focus, as in GUI apps.
-    let Some(pane) = state.ui.pane_areas().pane_at(input.column, input.row) else {
+    let Some(pane) = state.ui.pane_areas.pane_at(input.column, input.row) else {
         return Action::None;
     };
     let target = match pane {
@@ -110,7 +110,7 @@ mod tests {
 
     fn browse_state() -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.ui.set_pane_areas(PaneAreas {
+        state.ui.pane_areas = PaneAreas {
             explorer: Some(PaneArea {
                 x: 0,
                 y: 1,
@@ -129,7 +129,7 @@ mod tests {
                 width: 60,
                 height: 14,
             }),
-        });
+        };
         state
     }
 
@@ -192,7 +192,7 @@ mod tests {
 
     fn with_tables(state: &mut AppState, count: usize) {
         let tables = (0..count)
-            .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false))
+            .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0)))
             .collect();
         state.session.set_metadata(Some(Arc::new({
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -212,7 +212,7 @@ mod tests {
     ) {
         let mut state = browse_state();
         with_tables(&mut state, 3);
-        state.ui.set_focused_pane(FocusedPane::Result);
+        state.focus_pane(FocusedPane::Result);
 
         let action = handle_mouse_event(mouse(kind, EXPLORER_CELL), &state);
         reduce(&mut state, action, Instant::now(), &AppServices::stub());

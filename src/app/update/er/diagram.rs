@@ -50,11 +50,6 @@ pub(in crate::update) fn er_diagram_failed(
     vec![]
 }
 
-pub(in crate::update) fn er_log_write_failed(state: &mut AppState, error: String) -> Vec<Effect> {
-    state.messages.set_error(error);
-    vec![]
-}
-
 pub(in crate::update) fn er_open_diagram(state: &mut AppState, now: Instant) -> Vec<Effect> {
     if reject_pending_mysql_connection_probe(state) {
         return vec![];

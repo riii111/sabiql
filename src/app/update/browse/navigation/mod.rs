@@ -10,7 +10,7 @@ use crate::services::AppServices;
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
     state
         .inspector_view_model(services.ddl_generator.as_ref())
-        .max_scroll(state.ui.inspector_pane_height())
+        .max_scroll(state.ui.inspector_pane_height)
 }
 
 pub(super) fn explorer_item_count(state: &AppState) -> usize {

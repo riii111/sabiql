@@ -1,7 +1,7 @@
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
     Column, ColumnAttributes, FkAction, ForeignKey, Index, IndexAttributes, IndexType, RlsCommand,
-    RlsInfo, RlsPolicy, Schema, TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    RlsInfo, RlsPolicy, Schema, TableSignature, TableSummary, Trigger,
 };
 
 use super::super::super::PostgresAdapter;
@@ -22,10 +22,6 @@ enum MetadataParseError {
     ForeignKeyAction(String),
     #[error("RLS command parse failed: {0}")]
     RlsCommand(String),
-    #[error("trigger timing parse failed: {0}")]
-    TriggerTiming(String),
-    #[error("trigger event parse failed: {0}")]
-    TriggerEvent(String),
 }
 
 impl From<MetadataParseError> for DbOperationError {
@@ -90,14 +86,13 @@ impl PostgresAdapter {
             schema: String,
             name: String,
             row_count_estimate: Option<i64>,
-            has_rls: bool,
         }
 
         let raw: Vec<RawTable> = serde_json::from_str(trimmed)?;
 
         Ok(raw
             .into_iter()
-            .map(|t| TableSummary::new(t.schema, t.name, t.row_count_estimate, t.has_rls))
+            .map(|t| TableSummary::new(t.schema, t.name, t.row_count_estimate))
             .collect())
     }
 
@@ -334,41 +329,17 @@ impl PostgresAdapter {
         #[derive(serde::Deserialize)]
         struct RawTrigger {
             name: String,
-            timing: String,
-            events: Vec<String>,
             definition: String,
-            security_context: Option<String>,
         }
 
         let raw: Vec<RawTrigger> = serde_json::from_str(trimmed)?;
-
-        raw.into_iter()
-            .map(|t| {
-                let timing = t
-                    .timing
-                    .parse::<TriggerTiming>()
-                    .map_err(|error| MetadataParseError::TriggerTiming(error.to_string()))?;
-                let events = t
-                    .events
-                    .into_iter()
-                    .map(|event| {
-                        event
-                            .parse::<TriggerEvent>()
-                            .map_err(|error| MetadataParseError::TriggerEvent(error.to_string()))
-                    })
-                    .collect::<Result<Vec<_>, MetadataParseError>>()?;
-                Ok(Trigger {
-                    name: t.name,
-                    timing,
-                    events,
-                    action_order: None,
-                    definition: t.definition,
-                    security_context: t.security_context,
-                    creation_context: None,
-                })
+        Ok(raw
+            .into_iter()
+            .map(|trigger| Trigger {
+                name: trigger.name,
+                definition: trigger.definition,
             })
-            .collect::<Result<Vec<_>, MetadataParseError>>()
-            .map_err(DbOperationError::from)
+            .collect())
     }
 
     pub(in crate::adapters::postgres) fn parse_table_detail_combined(
@@ -855,7 +826,6 @@ mod tests {
 
     mod trigger_parsing {
         use super::*;
-        use crate::domain::{TriggerEvent, TriggerTiming};
         use rstest::rstest;
 
         #[rstest]
@@ -868,86 +838,15 @@ mod tests {
         }
 
         #[test]
-        fn valid_single_trigger_parses_all_fields() {
-            let json = r#"[{
-                "name": "audit_trigger",
-                "timing": "AFTER",
-                "events": ["INSERT", "UPDATE"],
-                "definition": "audit_func",
-                "security_context": "DEFINER"
-            }]"#;
+        fn preserves_full_trigger_definition() {
+            let definition = "CREATE TRIGGER audit_trigger AFTER UPDATE OF balance ON public.accounts FOR EACH ROW WHEN ((old.balance IS DISTINCT FROM new.balance)) EXECUTE FUNCTION audit_func()";
+            let json = serde_json::json!([{ "name": "audit_trigger", "definition": definition }]);
 
-            let result = PostgresAdapter::parse_triggers(json).unwrap();
-            let trigger = &result[0];
+            let result = PostgresAdapter::parse_triggers(&json.to_string()).unwrap();
 
             assert_eq!(result.len(), 1);
-            assert_eq!(trigger.name, "audit_trigger");
-            assert_eq!(trigger.timing, TriggerTiming::After);
-            assert_eq!(
-                trigger.events,
-                vec![TriggerEvent::Insert, TriggerEvent::Update]
-            );
-            assert_eq!(trigger.definition, "audit_func");
-            assert_eq!(trigger.security_context.as_deref(), Some("DEFINER"));
-        }
-
-        #[rstest]
-        #[case("BEFORE", TriggerTiming::Before)]
-        #[case("AFTER", TriggerTiming::After)]
-        #[case("INSTEAD OF", TriggerTiming::InsteadOf)]
-        fn timing_code_maps_to_trigger_timing(
-            #[case] timing: &str,
-            #[case] expected: TriggerTiming,
-        ) {
-            let json = format!(
-                r#"[{{
-                    "name": "test", "timing": "{timing}", "events": ["INSERT"],
-                    "definition": "func", "security_context": "INVOKER"
-                }}]"#
-            );
-
-            let result = PostgresAdapter::parse_triggers(&json).unwrap();
-            assert_eq!(result[0].timing, expected);
-        }
-
-        #[test]
-        fn unknown_timing_returns_metadata_parse_error() {
-            let json = r#"[{
-                "name": "test",
-                "timing": "UNKNOWN",
-                "events": ["INSERT"],
-                "definition": "func",
-                "security_context": "INVOKER"
-            }]"#;
-
-            let result = PostgresAdapter::parse_triggers(json);
-
-            assert!(matches!(
-                result,
-                Err(DbOperationError::MetadataParseFailed(_))
-            ));
-        }
-
-        #[test]
-        fn multiple_events_parsed_in_order() {
-            let json = r#"[{
-                "name": "multi_event",
-                "timing": "BEFORE",
-                "events": ["INSERT", "DELETE", "UPDATE", "TRUNCATE"],
-                "definition": "func",
-                "security_context": "INVOKER"
-            }]"#;
-
-            let result = PostgresAdapter::parse_triggers(json).unwrap();
-            assert_eq!(
-                result[0].events,
-                vec![
-                    TriggerEvent::Insert,
-                    TriggerEvent::Delete,
-                    TriggerEvent::Update,
-                    TriggerEvent::Truncate,
-                ]
-            );
+            assert_eq!(result[0].name, "audit_trigger");
+            assert_eq!(result[0].definition, definition);
         }
 
         #[test]
@@ -961,38 +860,6 @@ mod tests {
             let json = r"[]";
             let result = PostgresAdapter::parse_triggers(json).unwrap();
             assert!(result.is_empty());
-        }
-
-        #[test]
-        fn invoker_security_context_stays_invoker() {
-            let json = r#"[{
-                "name": "test",
-                "timing": "AFTER",
-                "events": ["INSERT"],
-                "definition": "func",
-                "security_context": "INVOKER"
-            }]"#;
-
-            let result = PostgresAdapter::parse_triggers(json).unwrap();
-            assert_eq!(result[0].security_context.as_deref(), Some("INVOKER"));
-        }
-
-        #[test]
-        fn unknown_event_returns_metadata_parse_error() {
-            let json = r#"[{
-                "name": "test",
-                "timing": "AFTER",
-                "events": ["INSERT", "MERGE"],
-                "definition": "func",
-                "security_context": "INVOKER"
-            }]"#;
-
-            let result = PostgresAdapter::parse_triggers(json);
-
-            assert!(matches!(
-                result,
-                Err(DbOperationError::MetadataParseFailed(_))
-            ));
         }
     }
 

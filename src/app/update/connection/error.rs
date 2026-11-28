@@ -19,16 +19,11 @@ pub(in crate::update) fn close_connection_error(state: &mut AppState) -> Vec<Eff
     cancel_effects
 }
 
-pub(in crate::update) fn toggle_connection_error_details(state: &mut AppState) -> Vec<Effect> {
-    state.connection_error.toggle_details();
-    vec![]
-}
-
 pub(in crate::update) fn scroll_connection_error(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match (direction, amount) {
         (ScrollDirection::Up, ScrollAmount::Line) => {
             state.connection_error.scroll_up();
@@ -45,7 +40,6 @@ pub(in crate::update) fn scroll_connection_error(
             "unsupported ConnectionError scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 pub(in crate::update) fn copy_connection_error(state: &AppState) -> Vec<Effect> {

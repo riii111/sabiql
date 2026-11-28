@@ -1,7 +1,6 @@
 use crate::domain::connection::MySqlConnectionConfig;
 use std::time::Instant;
 
-use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, WriteExecutionResult,
@@ -10,10 +9,9 @@ use crate::domain::{
 
 use super::adapter::MySqlAdapter;
 use super::cli::{
-    export_mysql_csv_to_file, mysql_server_capabilities, probe_mysql_server, run_mysql_adhoc,
+    mysql_server_capabilities, probe_mysql_server, run_mysql_adhoc,
     run_mysql_adhoc_with_server_capabilities, run_mysql_single_statement,
-    validate_mysql_export_query, validate_mysql_multi_query,
-    validate_mysql_multi_query_with_lower_case_table_names,
+    validate_mysql_multi_query, validate_mysql_multi_query_with_lower_case_table_names,
 };
 use super::dsn::{NormalizedMySqlConfig, map_mysql_tls_failure};
 use super::metadata;
@@ -212,22 +210,6 @@ impl MySqlAdapter {
             affected_rows,
             diagnostics: execution.diagnostics,
         })
-    }
-
-    pub async fn export_to_csv(
-        &self,
-        config: &MySqlConnectionConfig,
-        query: &str,
-        file_name: &str,
-    ) -> Result<std::path::PathBuf, DbOperationError> {
-        let target = NormalizedMySqlConfig::new(config)?;
-        validate_mysql_export_query(query, target.database.as_deref())?;
-
-        let query = query.to_string();
-        export_to_downloads(file_name, move |path| async move {
-            export_mysql_csv_to_file(target, &query, path).await
-        })
-        .await
     }
 }
 

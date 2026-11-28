@@ -11,7 +11,6 @@ use crate::domain::{
     TableSignatureSnapshot, WriteExecutionResult,
 };
 use async_trait::async_trait;
-use std::path::PathBuf;
 
 use super::mysql::{MySqlAdapter, build_mysql_dsn};
 use super::postgres::{PostgresAdapter, postgres_conninfo};
@@ -197,25 +196,6 @@ impl QueryExecutor for DbAdapterRegistry {
             }
         }
     }
-
-    async fn export_to_csv(
-        &self,
-        endpoint: &ConnectionEndpoint,
-        query: &str,
-        file_name: &str,
-    ) -> Result<PathBuf, DbOperationError> {
-        match self.route(endpoint) {
-            AdapterRoute::PostgreSQL(adapter, endpoint) => {
-                adapter.export_to_csv(endpoint, query, file_name).await
-            }
-            AdapterRoute::SQLite(adapter, config) => {
-                adapter.export_to_csv(config, query, file_name).await
-            }
-            AdapterRoute::MySQL(adapter, config) => {
-                adapter.export_to_csv(config, query, file_name).await
-            }
-        }
-    }
 }
 
 #[async_trait]
@@ -299,6 +279,7 @@ fn sqlite_dsn(config: &SqliteConnectionConfig) -> String {
 #[cfg(test)]
 mod tests {
     use crate::adapters::test_support;
+    use sabiql_domain::test_support::table;
 
     use rstest::rstest;
 
@@ -325,7 +306,7 @@ mod tests {
                 generation_kind: None,
             }],
             primary_key: Some(vec!["id".to_string()]),
-            ..test_support::minimal_table("", "")
+            ..table::minimal("", "")
         }
     }
 

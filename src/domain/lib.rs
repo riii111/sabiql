@@ -24,6 +24,9 @@ pub mod table_kind;
 pub mod trigger;
 pub mod write_result;
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 pub use column::{Column, ColumnAttributes, ColumnGenerationKind};
 pub use command_tag::CommandTag;
 pub use diagnostic::{DatabaseDiagnostic, DiagnosticLevel};
@@ -43,7 +46,7 @@ pub use table::{
     Table, TableSignature, TableSignatureSnapshot, TableStorageAttributes, TableSummary,
 };
 pub use table_kind::{TableKind, TableKindInfo};
-pub use trigger::{Trigger, TriggerCreationContext, TriggerEvent, TriggerTiming};
+pub use trigger::Trigger;
 pub use write_result::WriteExecutionResult;
 
 pub use connection::{

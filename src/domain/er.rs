@@ -157,7 +157,6 @@ impl ErTableInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TableStorageAttributes;
 
     fn make_table(name: &str, schema: &str, fks: Vec<(&str, &str)>) -> ErTableInfo {
         ErTableInfo {
@@ -178,24 +177,13 @@ mod tests {
 
     mod from_table {
         use super::*;
-        use crate::{FkAction, ForeignKey, TableKindInfo};
+        use crate::test_support::table;
+        use crate::{FkAction, ForeignKey};
 
         fn make_table(name: &str, foreign_keys: Vec<ForeignKey>) -> Table {
             Table {
-                schema: "public".to_string(),
-                name: name.to_string(),
                 foreign_keys,
-                owner: None,
-                columns: Vec::new(),
-                primary_key: None,
-                indexes: Vec::new(),
-                rls: None,
-                triggers: Vec::new(),
-                row_count_estimate: None,
-                comment: None,
-                source_ddl: None,
-                storage_attributes: TableStorageAttributes::default(),
-                kind_info: TableKindInfo::default(),
+                ..table::minimal("public", name)
             }
         }
 

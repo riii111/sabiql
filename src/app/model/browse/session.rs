@@ -448,16 +448,6 @@ impl BrowseSession {
         self.effective_user_run.clear_active();
     }
 
-    pub fn mark_probe_connected(&mut self) {
-        self.connection_state = ConnectionState::Connected;
-        self.metadata_state = MetadataState::NotLoaded;
-        self.metadata = None;
-        self.metadata_run.clear_active();
-        self.metadata_detail_generation = None;
-        self.effective_user = None;
-        self.effective_user_run.clear_active();
-    }
-
     // On reload failure (already Connected), keeps Connected to preserve
     // the current browse session while surfacing the error.
     pub fn mark_connection_failed(&mut self) {
@@ -522,10 +512,6 @@ impl BrowseSession {
 
     pub fn is_current_metadata_run(&self, run_id: u64) -> bool {
         self.metadata_run.is_current(run_id)
-    }
-
-    pub fn metadata_generation(&self) -> u64 {
-        self.metadata_run.last_id()
     }
 
     #[must_use]
@@ -790,6 +776,20 @@ mod test_support {
     use crate::model::connection::state::ConnectionState;
 
     impl BrowseSession {
+        pub(crate) fn metadata_generation(&self) -> u64 {
+            self.metadata_run.last_id()
+        }
+
+        pub(crate) fn mark_probe_connected(&mut self) {
+            self.connection_state = ConnectionState::Connected;
+            self.metadata_state = MetadataState::NotLoaded;
+            self.metadata = None;
+            self.metadata_run.clear_active();
+            self.metadata_detail_generation = None;
+            self.effective_user = None;
+            self.effective_user_run.clear_active();
+        }
+
         #[doc(hidden)]
         pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
             self.metadata_state = state;
@@ -820,8 +820,8 @@ mod tests {
         Arc::new({
             let mut metadata = DatabaseMetadata::new(db_name.to_string());
             metadata.table_summaries = vec![
-                TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-                TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
+                TableSummary::new("public".to_string(), "users".to_string(), Some(100)),
+                TableSummary::new("public".to_string(), "posts".to_string(), Some(50)),
             ];
             metadata
         })
@@ -1816,17 +1816,6 @@ mod tests {
             assert!(!debug.contains("secret"));
             assert!(debug.contains(r#"password: "****""#));
             assert!(!debug.contains("database_type"));
-        }
-
-        #[test]
-        fn default_state() {
-            let session = BrowseSession::default();
-            assert!(session.connection_state().is_not_connected());
-            assert_eq!(session.metadata_state(), &MetadataState::NotLoaded);
-            assert!(session.metadata().is_none());
-            assert!(session.selected_table_key().is_none());
-            assert!(session.table_detail().is_none());
-            assert_eq!(session.selection_generation(), 0);
         }
 
         #[test]

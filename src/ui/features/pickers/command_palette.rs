@@ -14,10 +14,14 @@ use crate::theme::ThemePalette;
 
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 
-pub struct CommandPalette;
+pub(crate) struct CommandPalette;
 
 impl CommandPalette {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> PickerLayout {
+    pub(crate) fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) -> PickerLayout {
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(50),

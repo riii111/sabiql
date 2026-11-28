@@ -419,15 +419,6 @@ impl MySqlField {
         };
         (self.name, value)
     }
-
-    pub(super) fn finish_raw(self) -> (String, String) {
-        let value = if self.is_null {
-            String::new()
-        } else {
-            self.value
-        };
-        (self.name, value)
-    }
 }
 
 pub(super) fn parse_mysql_field(

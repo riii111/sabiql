@@ -349,7 +349,7 @@ fn palette_matches(commands: &[usize], filter: &str, context: &KeyContext) -> Ve
 
 pub fn listed_palette_entries(state: &AppState) -> Vec<PaletteEntry> {
     palette_matches(
-        state.ui.palette_commands(),
+        &state.ui.palette_commands,
         state.ui.table_picker().filter_input().content(),
         &KeyContext::for_browse_state(state),
     )

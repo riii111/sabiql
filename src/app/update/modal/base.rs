@@ -32,7 +32,7 @@ pub(in crate::update) fn open_modal_command_palette(state: &mut AppState) -> Vec
         .into_iter()
         .map(|entry| entry.id)
         .collect();
-    state.ui.set_palette_commands(commands);
+    state.ui.palette_commands = commands;
     state.modal.set_mode(InputMode::CommandPalette);
     // Command palette currently reuses the generic picker selection and filter state.
     state.ui.table_picker_mut().clear_filter_and_reset();

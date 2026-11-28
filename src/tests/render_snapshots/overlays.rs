@@ -3,6 +3,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::settings::KeymapPreset;
+use sabiql_app::model::shared::text_input::TextEdit;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_app::update::input::keymap::KeyContext;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
@@ -509,12 +510,15 @@ fn help_overlay_filtered_current_result() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     let origin = KeyContext::from_state(&state);
     state.ui.help_mut().open(origin);
     for ch in "copy".chars() {
-        state.ui.help_mut().insert_filter_char(ch);
+        state
+            .ui
+            .help_mut()
+            .apply_filter_edit(TextEdit::Insert(ch), None);
     }
     state.ui.help_mut().enter_filter_editing();
     state.modal.set_mode(InputMode::Help);
@@ -544,7 +548,7 @@ fn help_overlay_narrow_horizontal_scroll() {
 
     state.modal.set_mode(InputMode::Help);
     state.ui.set_terminal_width(50);
-    state.ui.set_terminal_height(24);
+    state.ui.terminal_height = 24;
     state.ui.help_mut().set_scroll_offset(58);
     state.ui.help_mut().set_horizontal_offset(18);
 
@@ -570,7 +574,7 @@ fn settings_overlay() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.settings.open(state.ui.theme_id());
+    state.settings.open(state.ui.theme_id);
     state.modal.set_mode(InputMode::Settings);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -583,7 +587,7 @@ fn settings_overlay_keymap() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.settings.open(state.ui.theme_id());
+    state.settings.open(state.ui.theme_id);
     state.settings.switch_next_section();
     state.modal.set_mode(InputMode::Settings);
 
@@ -597,7 +601,7 @@ fn settings_overlay_er_diagram() {
     let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.settings.open(state.ui.theme_id());
+    state.settings.open(state.ui.theme_id);
     state.settings.switch_next_section();
     state.settings.switch_next_section();
     state.modal.set_mode(InputMode::Settings);
@@ -615,7 +619,7 @@ fn settings_overlay_er_diagram_custom_browser() {
     state
         .settings
         .load_er_browser(Some("Brave Browser".to_string()));
-    state.settings.open(state.ui.theme_id());
+    state.settings.open(state.ui.theme_id);
     state.settings.switch_next_section();
     state.settings.switch_next_section();
     state.modal.set_mode(InputMode::Settings);

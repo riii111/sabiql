@@ -2,8 +2,6 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-const MAX_LENGTH: usize = 50;
-
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectionNameError {
     #[error("Connection name cannot be empty")]
@@ -16,23 +14,30 @@ pub enum ConnectionNameError {
 pub struct ConnectionName(String);
 
 impl ConnectionName {
+    pub const MAX_LENGTH: usize = 50;
+
     pub fn new(name: impl Into<String>) -> Result<Self, ConnectionNameError> {
         let name = name.into();
         let trimmed = name.trim();
+        Self::validate(trimmed)?;
+        Ok(Self(trimmed.to_string()))
+    }
 
+    pub fn validate(name: &str) -> Result<(), ConnectionNameError> {
+        let trimmed = name.trim();
         if trimmed.is_empty() {
             return Err(ConnectionNameError::Empty);
         }
 
         let char_count = trimmed.chars().count();
-        if char_count > MAX_LENGTH {
+        if char_count > Self::MAX_LENGTH {
             return Err(ConnectionNameError::TooLong {
                 len: char_count,
-                max: MAX_LENGTH,
+                max: Self::MAX_LENGTH,
             });
         }
 
-        Ok(Self(trimmed.to_string()))
+        Ok(())
     }
 
     pub fn as_str(&self) -> &str {

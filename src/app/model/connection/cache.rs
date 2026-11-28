@@ -32,23 +32,6 @@ mod tests {
     use crate::test_support::endpoint;
 
     #[test]
-    fn connection_cache_default_has_empty_fields() {
-        let cache = ConnectionCache::default();
-
-        assert!(cache.metadata.is_none());
-        assert!(cache.effective_user.is_none());
-        assert!(cache.endpoint.is_none());
-        assert!(cache.table_detail.is_none());
-        assert!(cache.selected_table_key.is_none());
-        assert!(cache.query_result.is_none());
-        assert_eq!(cache.pagination.current_page(), 0);
-        assert!(cache.pagination.schema().is_empty());
-        assert!(cache.pagination.table().is_empty());
-        assert_eq!(cache.explorer_selected, 0);
-        assert_eq!(cache.inspector_tab, InspectorTab::default());
-    }
-
-    #[test]
     fn mysql_restore_requires_matching_dsn_metadata_and_effective_user() {
         let cache = ConnectionCache {
             endpoint: Some(endpoint::mysql("mysql://user@localhost/app", Some("app"))),

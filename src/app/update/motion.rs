@@ -81,7 +81,7 @@ fn is_animatable(state: &AppState, pane: ScrolledPane) -> bool {
 fn scroll_offset(state: &AppState, pane: ScrolledPane) -> usize {
     match pane {
         ScrolledPane::Result => state.result_interaction.scroll_offset(),
-        ScrolledPane::Inspector => state.ui.inspector_scroll_offset(),
+        ScrolledPane::Inspector => state.ui.inspector_scroll_offset,
         ScrolledPane::Help => state.ui.help().scroll_offset(),
         ScrolledPane::ExplainPlan => state.explain.scroll_offset(),
         ScrolledPane::ExplainCompare => state.explain.compare_scroll_offset(),
@@ -146,7 +146,7 @@ mod tests {
         let now = Instant::now();
         let probe = MotionProbe::capture(&state, &Action::None);
 
-        state.ui.set_focused_pane(FocusedPane::Result);
+        state.focus_pane(FocusedPane::Result);
         probe.record(&mut state, now);
 
         let transition = state.motion.focus_transition(now).expect("transition");
@@ -161,7 +161,7 @@ mod tests {
         let now = Instant::now();
         let probe = MotionProbe::capture(&state, &Action::None);
 
-        state.ui.set_focused_pane(FocusedPane::Result);
+        state.focus_pane(FocusedPane::Result);
         probe.record(&mut state, now);
 
         assert_eq!(state.motion.focus_transition(now), None);

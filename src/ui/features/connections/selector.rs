@@ -21,10 +21,10 @@ const PREFIX_DISPLAY_WIDTH: usize = 2;
 
 const SERVICE_LABEL_COL_PERCENT: usize = 40;
 
-pub struct ConnectionSelector;
+pub(crate) struct ConnectionSelector;
 
 impl ConnectionSelector {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
+    pub(crate) fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> u16 {
         let hint = connection_selector_hints(HintSurface::Border, &KeyContext::from_state(state))
             .into_iter()
             .map(|hint| (hint.key, hint.short));
@@ -99,7 +99,7 @@ fn render_service_item(
     ListItem::new(line)
 }
 
-pub fn render_connection_list(
+pub(crate) fn render_connection_list(
     frame: &mut Frame,
     area: Rect,
     state: &AppState,

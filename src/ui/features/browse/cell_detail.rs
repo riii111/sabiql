@@ -15,15 +15,15 @@ use crate::primitives::atoms::apply_yank_flash;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct CellDetailRenderMetrics {
-    pub visible_rows: usize,
-    pub viewport_width: usize,
+pub(crate) struct CellDetailRenderMetrics {
+    pub(crate) visible_rows: usize,
+    pub(crate) viewport_width: usize,
 }
 
-pub struct CellDetail;
+pub(crate) struct CellDetail;
 
 impl CellDetail {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
         now: std::time::Instant,

@@ -15,15 +15,15 @@ use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
 use crate::theme::ThemePalette;
 
-pub struct SqliteDiagnosticsRenderMetrics {
-    pub content_line_count: usize,
-    pub viewport_height: usize,
+pub(crate) struct SqliteDiagnosticsRenderMetrics {
+    pub(crate) content_line_count: usize,
+    pub(crate) viewport_height: usize,
 }
 
-pub struct SqliteDiagnosticsOverlay;
+pub(crate) struct SqliteDiagnosticsOverlay;
 
 impl SqliteDiagnosticsOverlay {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         state: &AppState,
         now: Instant,
@@ -126,7 +126,7 @@ fn render_lines(
     }
 }
 
-pub fn build_render_lines(
+pub(crate) fn build_render_lines(
     snapshot: &SqliteDiagnosticsSnapshot,
     theme: &ThemePalette,
     quick_check_override: Option<&str>,

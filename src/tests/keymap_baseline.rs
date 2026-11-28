@@ -11,7 +11,8 @@ use sabiql_app::model::shared::focused_pane::FocusedPane;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::model::shared::key_sequence::{KeySequenceState, Prefix};
 use sabiql_app::model::shared::settings::KeymapPreset;
-use sabiql_app::model::shared::ui_state::FocusMode;
+use sabiql_app::model::shared::text_input::TextEdit;
+
 use sabiql_app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use sabiql_app::model::sql_editor::modal::SqlModalTab;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
@@ -21,6 +22,7 @@ use sabiql_app::ports::outbound::DbOperationError;
 use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::input::keymap::{KeyContext, palette_available};
+use sabiql_domain::test_support::endpoint;
 use sabiql_domain::{ConnectionId, DatabaseType};
 use sabiql_ui::event::key_translator::translate;
 use sabiql_ui::shell::footer::Footer;
@@ -69,7 +71,7 @@ fn state(engine: DatabaseType, preset: KeymapPreset, mode: InputMode) -> AppStat
     state.session.activate_connection(
         &ConnectionId::from_string("keymap-baseline"),
         "keymap",
-        &super::harness::endpoint::for_engine(engine, "test://keymap"),
+        &endpoint::for_engine(engine, "test://keymap"),
     );
     state.settings.load_keymap_preset(preset);
     if mode == InputMode::CommandPalette {
@@ -127,7 +129,7 @@ fn capture(name: &str, mut state: AppState, output: &mut String) {
         writeln!(output, "{action}: {}", combos.join(", ")).unwrap();
     }
 
-    let theme = palette_for(state.ui.theme_id());
+    let theme = palette_for(state.ui.theme_id);
     let mut footer = Terminal::new(TestBackend::new(500, 1)).unwrap();
     footer
         .draw(|frame| Footer::render(frame, frame.area(), &state, Some(0), theme))
@@ -200,14 +202,11 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
     }
     for pane in [FocusedPane::Inspector, FocusedPane::Result] {
         let mut current = state(engine, preset, InputMode::Normal);
-        current.ui.set_focused_pane(pane);
+        current.focus_pane(pane);
         capture(&format!("Normal {pane:?}"), current, &mut output);
     }
     let mut focused = state(engine, preset, InputMode::Normal);
-    focused
-        .ui
-        .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
-    focused.ui.set_focused_pane(FocusedPane::Result);
+    focused.toggle_focus_mode();
     capture("Normal focus", focused, &mut output);
 
     let mut readonly = state(engine, preset, InputMode::Normal);
@@ -215,7 +214,7 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
     capture("Normal read-only", readonly, &mut output);
 
     let mut error = state(engine, preset, InputMode::Normal);
-    error.ui.set_focused_pane(FocusedPane::Result);
+    error.focus_pane(FocusedPane::Result);
     error
         .connection_error
         .set_error(ConnectionErrorInfo::from_db_operation_error(
@@ -233,22 +232,22 @@ fn capture_matrix(engine: DatabaseType, preset: KeymapPreset) -> String {
     ] {
         let mut result = state(engine, preset, InputMode::Normal);
         super::harness::with_current_result(&mut result);
-        result.ui.set_focused_pane(FocusedPane::Result);
+        result.focus_pane(FocusedPane::Result);
         result.result_interaction.activate_cell(0, 0);
         match variant {
             "draft" => {
                 result
                     .result_interaction
                     .begin_cell_edit(0, 0, "original".to_string());
-                result.result_interaction.cell_edit_insert_char('x');
+                result
+                    .result_interaction
+                    .edit_cell_text(TextEdit::Insert('x'), None);
                 result.result_interaction.leave_cell_edit();
             }
             "staged" => result.result_interaction.stage_row(0),
             "yank pending" => result.result_interaction.start_yank_operator(),
             "delete pending" => result.result_interaction.start_delete_operator(),
-            "prefix" => result
-                .ui
-                .set_key_sequence(KeySequenceState::WaitingSecondKey(Prefix::Z)),
+            "prefix" => result.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z),
             _ => {}
         }
         capture(&format!("Normal result {variant}"), result, &mut output);

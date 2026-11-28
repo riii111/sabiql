@@ -4,8 +4,6 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use super::super::super::capability::MySqlServerCapabilities;
-use super::super::export::run_mysql_export_process_with_capabilities;
 use super::super::policy::MySqlExecutionResult;
 use super::super::xml::MySqlResultSet;
 use super::adhoc::run_mysql_adhoc_with_program_and_statements;
@@ -15,35 +13,8 @@ use super::metadata::{
 };
 use super::single::run_mysql_single_statement_process_with_diagnostics;
 use super::*;
-use crate::adapters::csv_export::export_to_path;
 use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
 use crate::domain::{CommandTag, DatabaseDiagnostic, DiagnosticLevel, QueryValue, RefreshScope};
-async fn export_mysql_csv_with_program(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-    path: PathBuf,
-    execution_timeout: Duration,
-    capabilities: MySqlServerCapabilities,
-) -> Result<(), DbOperationError> {
-    let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
-    run_mysql_process_with_timeout(
-        execution_timeout,
-        &mut process,
-        RefreshScope::None,
-        async |process| {
-            run_mysql_export_process_with_capabilities(
-                process,
-                option_file,
-                query,
-                path,
-                capabilities,
-            )
-            .await
-        },
-    )
-    .await
-}
 async fn run_mysql_single_statement_with_program(
     program: &OsStr,
     option_file: &std::path::Path,
@@ -405,7 +376,6 @@ done
 
 mod adhoc;
 mod cleanup;
-mod export;
 #[path = "metadata.rs"]
 mod metadata_session;
 mod multi_statement;

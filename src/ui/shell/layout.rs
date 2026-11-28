@@ -51,7 +51,7 @@ impl MainLayout {
             time_ms,
             services,
             now,
-            palette_for(state.ui.theme_id()),
+            palette_for(state.ui.theme_id),
         )
     }
 
@@ -236,11 +236,11 @@ impl MainLayout {
             explorer: ExplorerLayout {
                 pane_height: left_area.map_or(0, |area| area.height),
                 content_width: explorer_content_width
-                    .unwrap_or_else(|| state.ui.explorer_content_width()),
+                    .unwrap_or_else(|| state.ui.explorer_content_width),
             },
             inspector: InspectorLayout {
                 viewport_plan: inspector_plan
-                    .unwrap_or_else(|| state.ui.inspector_viewport_plan().clone()),
+                    .unwrap_or_else(|| state.ui.inspector_viewport_plan.clone()),
                 pane_height: inspector_area.map_or(0, |area| area.height),
             },
             result: ResultLayout {

@@ -1,5 +1,6 @@
 use super::*;
 use crate::tests::harness::{focus_connection_field, set_connection_input};
+use sabiql_app::model::shared::text_input::TextEdit;
 use sabiql_app::update::action::DetailTarget;
 use sabiql_app::update::action::SearchStep;
 
@@ -44,7 +45,7 @@ fn json_detail_state() -> (AppState, Instant) {
             QuerySource::Preview,
         )));
     state.query.pagination.reset_for_table("public", "users");
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
     reduce(
         &mut state,
@@ -295,18 +296,23 @@ fn connection_setup_cursor_position_tracks_head_middle_and_tail() {
 
 #[test]
 fn cell_edit_cursor_position_tracks_head_middle_and_tail() {
+    let content = "abcdefghijklmno";
     for (cursor, expected_symbol) in [(0, "a"), (7, "h"), (15, " ")] {
         let mut state = table_detail_loaded_state();
         let mut terminal = create_test_terminal();
 
         with_current_result(&mut state);
-        state.ui.set_focused_pane(FocusedPane::Result);
+        state.focus_pane(FocusedPane::Result);
         state.result_interaction.activate_cell(1, 2);
         state.modal.set_mode(InputMode::CellEdit);
         state
             .result_interaction
-            .begin_cell_edit(1, 2, "abcdefghijklmno".to_string());
-        state.result_interaction.cell_edit_set_cursor(cursor);
+            .begin_cell_edit(1, 2, content.to_string());
+        for _ in cursor..content.chars().count() {
+            state
+                .result_interaction
+                .edit_cell_text(TextEdit::MoveCursor(CursorMove::Left), None);
+        }
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
         let (x, y) = block_cursor_position(&buffer).expect("expected cell edit cursor");

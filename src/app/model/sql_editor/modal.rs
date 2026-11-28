@@ -85,6 +85,7 @@ impl SqlModalContext {
         &self.editor
     }
 
+    #[cfg(feature = "test-support")]
     pub fn editor_mut_for_input(&mut self) -> &mut MultiLineInputState {
         &mut self.editor
     }
@@ -329,16 +330,6 @@ mod tests {
 
     mod lifecycle {
         use super::*;
-
-        #[test]
-        fn default_creates_empty_context() {
-            let ctx = SqlModalContext::default();
-
-            assert!(ctx.editor.content().is_empty());
-            assert_eq!(ctx.editor.cursor(), 0);
-            assert_eq!(ctx.status, SqlModalStatus::Normal);
-            assert!(!ctx.completion.visible);
-        }
 
         #[test]
         fn clear_content_resets_editor_state() {

@@ -80,8 +80,8 @@ fn terminate_ddl_statement(ddl: &mut String) {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::test_support;
-    use crate::domain::{Column, ColumnAttributes, TriggerEvent, TriggerTiming};
+    use crate::domain::{Column, ColumnAttributes};
+    use sabiql_domain::test_support::table;
 
     use super::*;
 
@@ -106,7 +106,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..test_support::minimal_table("", "")
+            ..table::minimal("", "")
         }
     }
 
@@ -172,13 +172,8 @@ mod tests {
                 Some("CREATE TABLE \"users\" (\n  \"id\" INTEGER NOT NULL\n)".to_string());
             table.triggers.push(Trigger {
                 name: "users_audit".to_string(),
-                timing: TriggerTiming::After,
-                events: vec![TriggerEvent::Insert],
-                action_order: None,
                 definition: "CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END"
                     .to_string(),
-                security_context: None,
-                creation_context: None,
             });
 
             let ddl = adapter.generate_ddl(&table);

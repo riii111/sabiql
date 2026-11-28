@@ -1,6 +1,6 @@
 use super::*;
 use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
-use sabiql_app::model::shared::ui_state::FocusMode;
+
 use sabiql_domain::{
     ConnectionId, DatabaseMetadata, Schema, TableKind, TableKindInfo, TableSummary,
 };
@@ -25,7 +25,7 @@ fn focus_on_result_pane() {
     state
         .query
         .set_current_result(Arc::new(fixtures::sample_query_result()));
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -40,9 +40,7 @@ fn focus_mode_fullscreen_result() {
     state
         .query
         .set_current_result(Arc::new(fixtures::sample_query_result()));
-    state
-        .ui
-        .set_focus_mode(FocusMode::focused(state.ui.focused_pane()));
+    state.toggle_focus_mode();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -102,25 +100,27 @@ fn sqlite_explorer_shows_table_names_without_schema_or_kind_suffixes() {
     let metadata = {
         let mut metadata = DatabaseMetadata::new("app.db".to_string());
         metadata.schemas = vec![Schema::new("main")];
-        metadata.table_summaries = vec![
-            TableSummary::new("main".to_string(), "users".to_string(), None, false),
-            TableSummary::new("main".to_string(), "settings".to_string(), None, false)
-                .with_kind_info(TableKindInfo {
-                    without_rowid: true,
-                    ..TableKindInfo::default()
-                }),
-            TableSummary::new("main".to_string(), "notes_fts".to_string(), None, false)
-                .with_kind_info(TableKindInfo {
-                    kind: TableKind::Virtual,
-                    virtual_module: Some("fts5".to_string()),
-                    ..TableKindInfo::default()
-                }),
-            TableSummary::new("main".to_string(), "typed_users".to_string(), None, false)
-                .with_kind_info(TableKindInfo {
-                    is_strict: true,
-                    ..TableKindInfo::default()
-                }),
-        ];
+        metadata.table_summaries =
+            vec![
+                TableSummary::new("main".to_string(), "users".to_string(), None),
+                TableSummary::new("main".to_string(), "settings".to_string(), None).with_kind_info(
+                    TableKindInfo {
+                        without_rowid: true,
+                        ..TableKindInfo::default()
+                    },
+                ),
+                TableSummary::new("main".to_string(), "notes_fts".to_string(), None)
+                    .with_kind_info(TableKindInfo {
+                        kind: TableKind::Virtual,
+                        virtual_module: Some("fts5".to_string()),
+                        ..TableKindInfo::default()
+                    }),
+                TableSummary::new("main".to_string(), "typed_users".to_string(), None)
+                    .with_kind_info(TableKindInfo {
+                        is_strict: true,
+                        ..TableKindInfo::default()
+                    }),
+            ];
         metadata
     };
     state.session.mark_connected(Arc::new(metadata));
@@ -146,7 +146,6 @@ fn sqlite_header_shows_table_name_without_schema() {
         "main".to_string(),
         "users".to_string(),
         None,
-        false,
     )];
     state.session.mark_connected(Arc::new(metadata));
     let _ = state
@@ -172,15 +171,15 @@ fn mysql_header_and_explorer_show_table_names() {
     );
     let mut metadata = DatabaseMetadata::new("app".to_string());
     metadata.table_summaries = vec![
-        TableSummary::new("app".to_string(), "users".to_string(), None, false),
-        TableSummary::new("app".to_string(), "audit_log".to_string(), None, false),
+        TableSummary::new("app".to_string(), "users".to_string(), None),
+        TableSummary::new("app".to_string(), "audit_log".to_string(), None),
     ];
     state.session.mark_connected(Arc::new(metadata));
     let generation = state.session.select_table("app", "users", &mut state.query);
     assert!(
         state
             .session
-            .set_table_detail(fixtures::minimal_table("app", "users"), generation)
+            .set_table_detail(table::minimal("app", "users"), generation)
     );
     state.ui.set_explorer_selection(Some(0));
 
@@ -198,14 +197,15 @@ fn view_icon_stays_visible_when_scrolling_a_wide_name_to_its_end() {
     state.settings.load_icon_mode(IconMode::Unicode);
     let mut metadata = DatabaseMetadata::new("catalog".into());
     metadata.table_summaries = vec![
-        TableSummary::new("public".into(), "売上一覧_by_region".into(), None, false)
-            .with_kind_info(TableKindInfo {
+        TableSummary::new("public".into(), "売上一覧_by_region".into(), None).with_kind_info(
+            TableKindInfo {
                 kind: TableKind::View,
                 ..TableKindInfo::default()
-            }),
+            },
+        ),
     ];
     state.session.mark_connected(Arc::new(metadata));
-    state.ui.set_explorer_horizontal_offset(usize::MAX);
+    state.ui.explorer_horizontal_offset = usize::MAX;
     let mut terminal = create_test_terminal_sized(80, 24);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -215,7 +215,7 @@ fn view_icon_stays_visible_when_scrolling_a_wide_name_to_its_end() {
             .lines()
             .any(|line| line.contains("◇ ") && line.contains("region [view]"))
     );
-    assert_eq!(state.ui.explorer_content_width(), 13);
+    assert_eq!(state.ui.explorer_content_width, 13);
 }
 
 #[test]
@@ -225,8 +225,8 @@ fn header_marks_the_selected_view_in_each_icon_mode_while_detail_loads() {
     let mut state = create_test_state();
     let mut metadata = DatabaseMetadata::new("test_db".into());
     metadata.table_summaries = vec![
-        TableSummary::new("public".into(), "active_users".into(), None, false)
-            .with_kind_info(fixtures::view_kind_info()),
+        TableSummary::new("public".into(), "active_users".into(), None)
+            .with_kind_info(table::view_kind_info()),
     ];
     state.session.mark_connected(Arc::new(metadata));
     let _ = state

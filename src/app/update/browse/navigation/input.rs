@@ -26,11 +26,6 @@ pub(in crate::update) fn enter_command_line(state: &mut AppState) -> Vec<Effect>
     vec![]
 }
 
-pub(in crate::update) fn exit_command_line(state: &mut AppState) -> Vec<Effect> {
-    state.modal.pop_mode();
-    vec![]
-}
-
 fn select_previous_table_picker_entry(state: &mut AppState) {
     let selected = state.ui.table_picker().selected();
     state
@@ -296,7 +291,7 @@ mod tests {
         fn state_with_tables(count: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
             let tables: Vec<TableSummary> = (0..count)
-                .map(|i| TableSummary::new("public".to_string(), format!("t{i}"), Some(0), false))
+                .map(|i| TableSummary::new("public".to_string(), format!("t{i}"), Some(0)))
                 .collect();
             state.session.set_metadata(Some(Arc::new({
                 let mut metadata = DatabaseMetadata::new("test".to_string());

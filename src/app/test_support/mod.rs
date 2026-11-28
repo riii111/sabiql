@@ -1,4 +1,3 @@
 pub mod column;
 pub mod connection;
-pub mod endpoint;
-pub mod table;
+pub use crate::domain::test_support::{endpoint, table};

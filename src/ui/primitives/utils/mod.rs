@@ -1,2 +1,2 @@
-pub mod color;
-pub mod text_utils;
+pub(crate) mod color;
+pub(crate) mod text_utils;

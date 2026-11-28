@@ -48,7 +48,7 @@ fn json_detail_state() -> (AppState, std::time::Instant) {
             QuerySource::Preview,
         )));
     state.query.pagination.reset_for_table("public", "users");
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
     (state, now)
 }
@@ -61,10 +61,9 @@ fn cell_detail_state() -> (AppState, std::time::Instant) {
         "public".to_string(),
         "notes".to_string(),
         Some(1),
-        false,
     )];
     state.session.mark_connected(Arc::new(metadata));
-    let mut table = fixtures::minimal_table("public", "notes");
+    let mut table = table::minimal("public", "notes");
     table.columns = vec![
         Column {
             name: "id".to_string(),
@@ -106,7 +105,7 @@ fn cell_detail_state() -> (AppState, std::time::Instant) {
             QuerySource::Preview,
         )));
     state.query.pagination.reset_for_table("public", "notes");
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 1);
     (state, now)
 }
@@ -119,7 +118,6 @@ fn sqlite_json_text_cell_detail_state() -> (AppState, std::time::Instant) {
         "public".to_string(),
         "notes".to_string(),
         Some(100),
-        false,
     )];
     state.session.mark_connected(Arc::new(metadata));
     let mut table = fixtures::sample_postgres_table_detail();
@@ -171,7 +169,7 @@ fn sqlite_json_text_cell_detail_state() -> (AppState, std::time::Instant) {
             QuerySource::Preview,
         )));
     state.query.pagination.reset_for_table("public", "notes");
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 1);
     (state, now)
 }
@@ -201,7 +199,7 @@ fn row_detail_state() -> (AppState, std::time::Instant) {
             1,
             QuerySource::Preview,
         )));
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     (state, now)
 }
@@ -243,7 +241,7 @@ fn result_pane_scrolled_past_wide_column_fills_width() {
             3,
             QuerySource::Preview,
         )));
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.set_horizontal_offset(2);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -287,7 +285,7 @@ fn result_pane_right_edge_peeks_truncated_previous_column() {
             3,
             QuerySource::Preview,
         )));
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.set_horizontal_offset(2);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -327,7 +325,7 @@ fn result_pane_narrow_pane_keeps_horizontal_scroll() {
             3,
             QuerySource::Preview,
         )));
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -340,7 +338,7 @@ fn result_pane_first_cell_active_mode() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -354,7 +352,7 @@ fn result_pane_cell_active_mode() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -370,10 +368,10 @@ fn result_pane_view_cell_active_hides_write_hints() {
     with_current_result(&mut state);
     state.query.pagination.reset_for_table("public", "users");
     let mut table = state.session.table_detail().unwrap().clone();
-    table.kind_info = fixtures::view_kind_info();
+    table.kind_info = table::view_kind_info();
     let generation = state.session.selection_generation();
     let _ = state.session.set_table_detail(table, generation);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
 
     let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
@@ -387,7 +385,7 @@ fn result_pane_cell_edit_mode() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
@@ -408,7 +406,7 @@ fn result_pane_cell_active_pending_draft() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
     state
@@ -429,7 +427,7 @@ fn result_pane_staged_delete_row() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.set_focused_pane(FocusedPane::Result);
+    state.focus_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 

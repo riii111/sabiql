@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use sabiql_app::domain::QueryValue;
+use sabiql_app::domain::{QueryResult, QueryValue};
 use sabiql_app::ports::outbound::{CachedResultExporter, DbOperationError};
 
 use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
@@ -12,11 +14,10 @@ impl CachedResultExporter for CsvCachedResultExporter {
     async fn export_cached_result_to_csv(
         &self,
         file_name: String,
-        columns: Vec<String>,
-        values: Vec<Vec<QueryValue>>,
+        result: Arc<QueryResult>,
     ) -> Result<std::path::PathBuf, DbOperationError> {
-        export_to_downloads(&file_name, |path| {
-            write_cached_result_csv(path, columns, values)
+        export_to_downloads(&file_name, |path| async move {
+            write_cached_result_csv(path, &result.columns, result.values()).await
         })
         .await
     }
@@ -39,12 +40,12 @@ fn cached_csv_cell(value: &QueryValue) -> String {
 
 async fn write_cached_result_csv(
     path: std::path::PathBuf,
-    columns: Vec<String>,
-    values: Vec<Vec<QueryValue>>,
+    columns: &[String],
+    values: &[Vec<QueryValue>],
 ) -> Result<(), DbOperationError> {
     let mut file = CsvFileWriter::create(path).await?;
     file.write_record(columns.iter()).await?;
-    for row in &values {
+    for row in values {
         file.write_record(row.iter().map(cached_csv_cell)).await?;
     }
     file.finish().await
@@ -56,6 +57,14 @@ mod tests {
 
     use super::*;
     use tempfile::tempdir;
+
+    async fn write_csv(
+        path: std::path::PathBuf,
+        columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
+    ) -> Result<(), DbOperationError> {
+        write_cached_result_csv(path, &columns, &values).await
+    }
 
     mod cached_csv_cell_tests {
         use super::*;
@@ -97,7 +106,7 @@ mod tests {
             let dir = tempdir().unwrap();
             let path = dir.path().join("export.csv");
 
-            write_cached_result_csv(
+            write_csv(
                 path.clone(),
                 vec!["id".to_string(), "payload".to_string()],
                 vec![vec![
@@ -119,7 +128,7 @@ mod tests {
             let dir = tempdir().unwrap();
             let path = dir.path().join("export.csv");
 
-            write_cached_result_csv(
+            write_csv(
                 path.clone(),
                 vec!["id".to_string(), "payload".to_string()],
                 vec![],
@@ -135,7 +144,7 @@ mod tests {
             let dir = tempdir().unwrap();
             let path = dir.path().join("export.csv");
 
-            write_cached_result_csv(
+            write_csv(
                 path.clone(),
                 vec!["payload".to_string()],
                 vec![vec![QueryValue::text("a\0bc")]],
@@ -152,7 +161,7 @@ mod tests {
             let path = dir.path().join("large_export.csv");
             let big_value = "x".repeat(CSV_FLUSH_THRESHOLD + 1);
 
-            write_cached_result_csv(
+            write_csv(
                 path.clone(),
                 vec!["data".to_string()],
                 vec![vec![QueryValue::Text(big_value.clone())]],
@@ -172,7 +181,7 @@ mod tests {
             let path = dir.path().join("large_cached_export.csv");
             let big_value = "x".repeat(16 * 1024 * 1024 + 1);
 
-            write_cached_result_csv(
+            write_csv(
                 path.clone(),
                 vec!["data".to_string()],
                 vec![vec![QueryValue::Text(big_value.clone())]],
@@ -191,7 +200,7 @@ mod tests {
             let dir = tempdir().unwrap();
             let path = dir.path().join("missing").join("export.csv");
 
-            let error = write_cached_result_csv(path, vec!["id".to_string()], vec![])
+            let error = write_csv(path, vec!["id".to_string()], vec![])
                 .await
                 .unwrap_err();
 

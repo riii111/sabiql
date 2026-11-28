@@ -24,7 +24,8 @@ impl ConnectionState {
         matches!(self, Self::Connected)
     }
 
-    pub fn is_failed(self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn is_failed(self) -> bool {
         matches!(self, Self::Failed)
     }
 }
@@ -33,12 +34,6 @@ impl ConnectionState {
 mod tests {
     use super::*;
     use rstest::rstest;
-
-    #[test]
-    fn default_returns_not_connected() {
-        let state = ConnectionState::default();
-        assert!(state.is_not_connected());
-    }
 
     #[rstest]
     #[case(ConnectionState::NotConnected, true, false, false, false)]

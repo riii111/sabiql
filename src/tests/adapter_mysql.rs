@@ -114,7 +114,8 @@ mod connection {
         assert!(trusted_config.server_public_key_path.is_some());
         let no_key_config = trusted_config.clone().with_server_public_key_path(None);
         let no_key_dsn = mysql_profile("mysql-caching-sha2-public-key-without-key", no_key_config)
-            .mysql_config()
+            .config
+            .as_mysql()
             .unwrap()
             .clone();
         let error = adapter
@@ -133,7 +134,7 @@ mod connection {
         }
 
         let trusted_profile = mysql_profile("mysql-caching-sha2-public-key", trusted_config);
-        let dsn = trusted_profile.mysql_config().unwrap().clone();
+        let dsn = trusted_profile.config.as_mysql().unwrap().clone();
 
         adapter.probe(&dsn).await.unwrap();
         let result = adapter
@@ -153,7 +154,7 @@ mod connection {
         let config = mysql_tls_test_config();
         let profile = mysql_profile("mysql-tls-integration", config);
         let adapter = MySqlAdapter::new();
-        let dsn = profile.mysql_config().unwrap().clone();
+        let dsn = profile.config.as_mysql().unwrap().clone();
 
         adapter.probe(&dsn).await.unwrap();
         let result = adapter
@@ -175,7 +176,7 @@ mod connection {
         config.ssl_key = None;
         let profile = mysql_profile("mysql-tls-missing-client-certificate", config);
         let adapter = MySqlAdapter::new();
-        let dsn = profile.mysql_config().unwrap().clone();
+        let dsn = profile.config.as_mysql().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
@@ -198,7 +199,7 @@ mod connection {
         config.ssl_ca = config.ssl_cert.clone();
         let profile = mysql_profile("mysql-tls-wrong-ca", config);
         let adapter = MySqlAdapter::new();
-        let dsn = profile.mysql_config().unwrap().clone();
+        let dsn = profile.config.as_mysql().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&error).summary(),
@@ -214,7 +215,7 @@ mod connection {
         config.ssl_mode = MySqlSslMode::VerifyIdentity;
         let profile = mysql_profile("mysql-tls-wrong-host", config);
         let adapter = MySqlAdapter::new();
-        let dsn = profile.mysql_config().unwrap().clone();
+        let dsn = profile.config.as_mysql().unwrap().clone();
         let error = adapter.probe(&dsn).await.unwrap_err();
         let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
@@ -234,7 +235,7 @@ mod connection {
         let mut permission_config = base_config.clone();
         permission_config.database = Some("mysql".to_string());
         let permission_profile = mysql_profile("mysql-permission", permission_config);
-        let permission_dsn = permission_profile.mysql_config().unwrap().clone();
+        let permission_dsn = permission_profile.config.as_mysql().unwrap().clone();
         let permission_error = adapter.probe(&permission_dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&permission_error).summary(),
@@ -246,7 +247,7 @@ mod connection {
         missing_config.username = "root".to_string();
         missing_config.password = "root".to_string();
         let missing_profile = mysql_profile("mysql-missing-database", missing_config);
-        let missing_dsn = missing_profile.mysql_config().unwrap().clone();
+        let missing_dsn = missing_profile.config.as_mysql().unwrap().clone();
         let missing_error = adapter.probe(&missing_dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&missing_error).summary(),
@@ -256,7 +257,7 @@ mod connection {
         let mut auth_config = mysql_tls_config();
         auth_config.password = "wrong-password".to_string();
         let auth_profile = mysql_profile("mysql-authentication", auth_config);
-        let auth_dsn = auth_profile.mysql_config().unwrap().clone();
+        let auth_dsn = auth_profile.config.as_mysql().unwrap().clone();
         let auth_error = adapter.probe(&auth_dsn).await.unwrap_err();
         let auth_info = ConnectionErrorInfo::from_db_operation_error(&auth_error);
         assert_eq!(
@@ -275,7 +276,7 @@ mod metadata_fetch {
         MYSQL_FIXTURE_TABLE, mysql_integration_config, with_mysql_test_db,
     };
     use sabiql_app::ports::outbound::{AccessMode, MetadataProvider};
-    use sabiql_domain::{FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming};
+    use sabiql_domain::{FkAction, IndexType, TableKind};
     use sabiql_infra::adapters::DbAdapterRegistry;
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
@@ -423,27 +424,10 @@ mod metadata_fetch {
                 let first_trigger = &detail.triggers[0];
                 let second_trigger = &detail.triggers[1];
                 if first_trigger.name != "mysql_cli_fixture_audit"
-                    || first_trigger.action_order != Some(1)
-                    || first_trigger.timing != TriggerTiming::Before
-                    || first_trigger.events != [TriggerEvent::Update]
-                    || first_trigger.definition != "SET NEW.empty_text = NEW.empty_text"
-                    || first_trigger.security_context.as_deref() != Some("sabiql@%")
-                    || first_trigger
-                        .creation_context
-                        .as_ref()
-                        .is_none_or(|context| {
-                            context.sql_mode.is_none()
-                                || context.character_set_client.is_none()
-                                || context.collation_connection.is_none()
-                                || context.database_collation.is_none()
-                                || context.created.is_none()
-                        })
+                    || first_trigger.definition
+                        != "CREATE DEFINER=`sabiql`@`%` TRIGGER `mysql_cli_fixture_audit` BEFORE UPDATE ON `mysql_cli_fixture` FOR EACH ROW SET NEW.empty_text = NEW.empty_text"
                     || second_trigger.name != "a_mysql_cli_fixture_audit"
-                    || second_trigger.action_order != Some(2)
-                    || second_trigger.timing != TriggerTiming::Before
-                    || second_trigger.events != [TriggerEvent::Update]
-                    || second_trigger.definition != "SET NEW.empty_text = NEW.empty_text"
-                    || second_trigger.security_context.as_deref() != Some("sabiql@%")
+                    || !second_trigger.definition.ends_with("FOR EACH ROW BEGIN\n    SET NEW.empty_text = NEW.empty_text;\nEND")
                 {
                     return Err(format!("unexpected MySQL triggers: {:?}", detail.triggers));
                 }
@@ -3382,269 +3366,6 @@ mod query_execution {
                     return Err("MySQL global sql_mode was not restored".to_string());
                 }
                 test_result
-            })
-        })
-        .await;
-    }
-}
-
-mod csv_export {
-
-    use super::shared::MYSQL_EMPTY_TABLE;
-    use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::DbOperationError;
-    use sabiql_infra::adapters::mysql::test_support::export_mysql_csv_to_path_for_test;
-    use tempfile::tempdir;
-
-    const MYSQL_CSV_TEST_DECODED_LIMIT_BYTES: usize = 16 * 1024 * 1024;
-    const MYSQL_CSV_TEST_CLIENT_PACKET_LIMIT_BYTES: usize = 32 * 1024 * 1024;
-
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn exports_with_a_read_only_session_and_rejects_writes() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let output_directory = tempdir().map_err(|error| error.to_string())?;
-                let path = output_directory.path().join("read_only.csv");
-                let path = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    "SELECT @@SESSION.transaction_read_only AS transaction_read_only",
-                    path,
-                )
-                .await
-                .map_err(|error| format!("read-only CSV export failed: {error:?}"))?;
-                let csv = std::fs::read_to_string(&path)
-                    .map_err(|error| format!("failed to read CSV export: {error}"))?;
-                if csv != "transaction_read_only\n1\n" {
-                    return Err(format!("unexpected read-only CSV export: {csv:?}"));
-                }
-
-                let write_path = output_directory.path().join("write.csv");
-                let result = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    &format!("INSERT INTO {MYSQL_FIXTURE_TABLE} (id) VALUES (2)"),
-                    write_path.clone(),
-                )
-                .await;
-                if !matches!(
-                    result,
-                    Err(DbOperationError::QueryFailed(ref details))
-                        if details.contains("READ ONLY")
-                ) {
-                    return Err(format!("write export was not rejected: {result:?}"));
-                }
-                if write_path.exists() {
-                    return Err("write export created an output file".to_string());
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn exports_each_supported_mysql_result_statement() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let output_directory = tempdir().map_err(|error| error.to_string())?;
-                for (name, query) in [
-                    ("select", format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}")),
-                    ("table", format!("TABLE {MYSQL_EMPTY_TABLE}")),
-                    ("show", format!("SHOW TABLES LIKE '{MYSQL_FIXTURE_TABLE}'")),
-                    ("describe", format!("DESCRIBE {MYSQL_FIXTURE_TABLE}")),
-                ] {
-                    let path = export_mysql_csv_to_path_for_test(
-                        db.config(),
-                        &query,
-                        output_directory.path().join(format!("{name}.csv")),
-                    )
-                    .await
-                    .map_err(|error| format!("{name} CSV export failed: {error:?}"))?;
-                    let csv = std::fs::read_to_string(&path)
-                        .map_err(|error| format!("failed to read {name} CSV export: {error}"))?;
-                    if csv.trim().is_empty() {
-                        return Err(format!("{name} CSV export was empty"));
-                    }
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
-
-    #[tokio::test]
-    #[cfg(unix)]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn exports_resultset_field_error_text_verbatim_through_real_mysql_cli() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let output_directory = tempdir().map_err(|error| error.to_string())?;
-                let path = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    "SELECT CONVERT(CONCAT('line 1', CHAR(10), 'ERROR 1146 (42S02): this is a cell value') USING utf8mb4) AS message",
-                    output_directory.path().join("field-error.csv"),
-                )
-                .await
-                .map_err(|error| format!("field-error CSV export failed: {error:?}"))?;
-                let csv = std::fs::read_to_string(&path)
-                    .map_err(|error| format!("failed to read field-error CSV export: {error}"))?;
-                let expected =
-                    "message\n\"line 1\nERROR 1146 (42S02): this is a cell value\"\n";
-                if csv != expected {
-                    return Err(format!("unexpected field-error CSV export: {csv:?}"));
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn enforces_mysql_csv_decoded_field_and_row_limits_through_real_mysql_cli() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let output_directory = tempdir().map_err(|error| error.to_string())?;
-                let field_bytes = MYSQL_CSV_TEST_DECODED_LIMIT_BYTES / 2;
-                let row_within_limit = format!(
-                    "SELECT REPEAT('x', {field_bytes}) AS first, REPEAT('x', {}) AS second",
-                    field_bytes - 1
-                );
-                let within_path = output_directory.path().join("row-within-limit.csv");
-                let within_path = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    &row_within_limit,
-                    within_path,
-                )
-                .await
-                .map_err(|error| format!("within-limit CSV export failed: {error:?}"))?;
-                let expected_size = (MYSQL_CSV_TEST_DECODED_LIMIT_BYTES - 1
-                    + "first,second\n".len()
-                    + 2) as u64;
-                let actual_size = std::fs::metadata(&within_path)
-                    .map_err(|error| format!("failed to stat within-limit CSV: {error}"))?
-                    .len();
-                if actual_size != expected_size {
-                    return Err(format!(
-                        "unexpected within-limit CSV size: {actual_size}, expected {expected_size}"
-                    ));
-                }
-
-                let packet_over_limit = format!(
-                    "SELECT REPEAT('x', {field_bytes}), REPEAT('x', {field_bytes})",
-                    field_bytes = MYSQL_CSV_TEST_CLIENT_PACKET_LIMIT_BYTES / 2 + 1
-                );
-                let packet_path = output_directory.path().join("packet-over-limit.csv");
-                let packet_error = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    &packet_over_limit,
-                    packet_path.clone(),
-                )
-                .await
-                .unwrap_err();
-                if !matches!(
-                    packet_error,
-                    DbOperationError::QueryFailed(ref details)
-                        if details.contains(
-                            "MySQL protocol packet exceeds the 33554432-byte client limit"
-                        )
-                ) {
-                    return Err(format!(
-                        "packet-over-limit export returned an unexpected error: {packet_error:?}"
-                    ));
-                }
-                if packet_path.exists() {
-                    return Err("packet-over-limit export created an output file".to_string());
-                }
-
-                let field_over_limit = format!(
-                    "SELECT REPEAT('x', {}) AS payload",
-                    MYSQL_CSV_TEST_DECODED_LIMIT_BYTES + 1
-                );
-                let field_path = output_directory.path().join("field-over-limit.csv");
-                let field_error = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    &field_over_limit,
-                    field_path.clone(),
-                )
-                .await
-                .unwrap_err();
-                if !matches!(
-                    field_error,
-                    DbOperationError::QueryFailed(ref details)
-                        if details.contains("MySQL decoded CSV field exceeds 16 MiB (16777216 bytes)")
-                ) {
-                    return Err(format!(
-                        "field-over-limit export returned an unexpected error: {field_error:?}"
-                    ));
-                }
-                if field_path.exists() {
-                    return Err("field-over-limit export created an output file".to_string());
-                }
-
-                let row_over_limit = format!(
-                    "SELECT REPEAT('x', {field_bytes}) AS first, REPEAT('x', {field_bytes_plus_one}) AS second",
-                    field_bytes_plus_one = field_bytes + 1
-                );
-                let row_path = output_directory.path().join("row-over-limit.csv");
-                let row_error = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    &row_over_limit,
-                    row_path.clone(),
-                )
-                .await
-                .unwrap_err();
-                if !matches!(
-                    row_error,
-                    DbOperationError::QueryFailed(ref details)
-                        if details.contains("MySQL decoded CSV row exceeds 16 MiB (16777216 bytes)")
-                ) {
-                    return Err(format!(
-                        "row-over-limit export returned an unexpected error: {row_error:?}"
-                    ));
-                }
-                if row_path.exists() {
-                    return Err("row-over-limit export created an output file".to_string());
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn exports_a_header_only_csv_for_an_empty_result() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let output_directory = tempdir().map_err(|error| error.to_string())?;
-                let path = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    "SELECT 1 AS first_alias, '' AS empty_alias WHERE FALSE",
-                    output_directory.path().join("empty.csv"),
-                )
-                .await
-                .map_err(|error| format!("empty CSV export failed: {error:?}"))?;
-                let csv = std::fs::read_to_string(&path)
-                    .map_err(|error| format!("failed to read empty CSV export: {error}"))?;
-                if csv != "first_alias,empty_alias\n" {
-                    return Err(format!("unexpected empty CSV export: {csv:?}"));
-                }
-
-                let table_path = export_mysql_csv_to_path_for_test(
-                    db.config(),
-                    &format!("TABLE {MYSQL_EMPTY_TABLE}"),
-                    output_directory.path().join("empty-table.csv"),
-                )
-                .await
-                .map_err(|error| format!("empty TABLE CSV export failed: {error:?}"))?;
-                let table_csv = std::fs::read_to_string(&table_path)
-                    .map_err(|error| format!("failed to read empty TABLE CSV export: {error}"))?;
-                if table_csv != "id,payload\n" {
-                    return Err(format!("unexpected empty TABLE CSV export: {table_csv:?}"));
-                }
-                Ok(())
             })
         })
         .await;

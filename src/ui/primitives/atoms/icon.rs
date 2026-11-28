@@ -2,7 +2,7 @@ use crate::app::model::shared::settings::IconMode;
 use crate::domain::{DatabaseType, TableKind};
 
 #[derive(Clone, Copy)]
-pub enum Icon {
+pub(crate) enum Icon {
     Project,
     Table,
     View,
@@ -27,7 +27,7 @@ pub enum Icon {
 }
 
 impl Icon {
-    pub fn prefix(self, mode: IconMode) -> &'static str {
+    pub(crate) fn prefix(self, mode: IconMode) -> &'static str {
         let (nerd_font, unicode, ascii) = match self {
             Self::Project => ("\u{f07b} ", "⌂ ", "./ "),
             Self::Table => ("\u{f0ce} ", "▦ ", "T "),

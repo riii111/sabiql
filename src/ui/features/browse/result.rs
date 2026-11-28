@@ -26,7 +26,7 @@ use crate::primitives::utils::text_utils::{
 };
 use crate::theme::ThemePalette;
 
-pub struct ResultPane;
+pub(crate) struct ResultPane;
 
 struct EditingCellView<'a> {
     row: usize,
@@ -50,7 +50,7 @@ struct ResultTableParams<'a> {
 }
 
 impl ResultPane {
-    pub fn render(
+    pub(crate) fn render(
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
@@ -98,8 +98,8 @@ impl ResultPane {
                             now,
                         ),
                         horizontal_offset: state.result_interaction.horizontal_offset(),
-                        stored_plan: state.ui.result_viewport_plan(),
-                        stored_cache: state.ui.result_widths_cache(),
+                        stored_plan: &state.ui.result_viewport_plan,
+                        stored_cache: &state.ui.result_widths_cache,
                         result_generation: state.query.result_generation(),
                         selection: state.result_interaction.selection(),
                         editing_cell,
@@ -913,57 +913,5 @@ mod tests {
         let result = truncate_cell("hello world", max);
 
         assert_eq!(result, expected);
-    }
-
-    #[test]
-    #[ignore = "local-only dev benchmark, not tied to a CI issue"]
-    #[allow(clippy::print_stderr, reason = "benchmark result output")]
-    fn bench_ideal_widths_cache_speedup() {
-        use crate::app::model::shared::viewport::ColumnWidthsCache;
-        use crate::primitives::utils::text_utils::calculate_header_min_widths;
-        use std::time::Instant;
-
-        let cols = 20;
-        let rows = 50;
-        let headers: Vec<String> = (0..cols).map(|i| format!("column_{i}")).collect();
-        let data: Vec<Vec<String>> = (0..rows)
-            .map(|r| {
-                (0..cols)
-                    .map(|c| format!("value_r{r}_c{c}_padding"))
-                    .collect()
-            })
-            .collect();
-
-        let iterations = 1000;
-
-        // Baseline: compute both widths every iteration (pre-optimization path)
-        let start = Instant::now();
-        for _ in 0..iterations {
-            std::hint::black_box(calculate_ideal_widths(&headers, &data));
-            std::hint::black_box(calculate_header_min_widths(&headers));
-        }
-        let baseline = start.elapsed();
-
-        // Cached: is_valid check + clone (actual cache-hit path)
-        let ideal = calculate_ideal_widths(&headers, &data);
-        let min = calculate_header_min_widths(&headers);
-        let cache = ColumnWidthsCache::new(ideal, min, 1);
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let valid = std::hint::black_box(cache.is_valid(1));
-            if valid {
-                std::hint::black_box(cache.clone());
-            }
-        }
-        let cached = start.elapsed();
-
-        eprintln!(
-            "Baseline: {:?} ({:.1} µs/iter), Cached (is_valid+clone): {:?} ({:.1} µs/iter), Speedup: {:.0}x",
-            baseline,
-            baseline.as_micros() as f64 / iterations as f64,
-            cached,
-            cached.as_micros() as f64 / iterations as f64,
-            baseline.as_secs_f64() / cached.as_secs_f64(),
-        );
     }
 }

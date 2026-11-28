@@ -70,7 +70,7 @@ impl PostgresAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::test_support;
+    use sabiql_domain::test_support::table;
 
     use crate::adapters::postgres::PostgresAdapter;
     use crate::domain::{Column, ColumnAttributes, Table};
@@ -96,7 +96,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..test_support::minimal_table("", "")
+            ..table::minimal("", "")
         }
     }
 

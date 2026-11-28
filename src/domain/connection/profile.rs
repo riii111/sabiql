@@ -1,13 +1,16 @@
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(test, feature = "test-support"))]
+use super::config::PostgresConnectionConfig;
 use super::config::{
-    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, MySqlTransport,
-    PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
+    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, MySqlTransport, SqliteConnectionConfig,
+    SqliteConnectionConfigError,
 };
 use super::database_type::DatabaseType;
 use super::id::ConnectionId;
 use super::name::{ConnectionName, ConnectionNameError};
 use super::sqlite_path::SqlitePathError;
+#[cfg(any(test, feature = "test-support"))]
 use super::ssl_mode::SslMode;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -47,6 +50,7 @@ pub struct ConnectionProfile {
     pub config: ConnectionConfig,
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl ConnectionProfile {
     pub fn new_postgres(
         name: impl Into<String>,
@@ -113,7 +117,9 @@ impl ConnectionProfile {
             )),
         })
     }
+}
 
+impl ConnectionProfile {
     pub fn with_id_and_config(
         id: ConnectionId,
         name: impl Into<String>,
@@ -134,18 +140,14 @@ impl ConnectionProfile {
                         }
                     }
                     MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
-                        let Some(path) = mysql.transport_path.as_deref() else {
-                            return Err(ConnectionProfileError::MissingMySqlTransportPath);
-                        };
-                        if path.trim().is_empty() || path.chars().any(char::is_control) {
+                        let path = mysql
+                            .transport_path
+                            .as_deref()
+                            .ok_or(ConnectionProfileError::MissingMySqlTransportPath)?;
+                        if !MySqlTransport::is_valid_path(path) {
                             return Err(ConnectionProfileError::InvalidMySqlTransportPath);
                         }
-                        if mysql.transport == MySqlTransport::NamedPipe
-                            && !matches!(
-                                mysql.ssl_mode,
-                                MySqlSslMode::Disabled | MySqlSslMode::Preferred
-                            )
-                        {
+                        if !mysql.transport.allows_ssl_mode(mysql.ssl_mode) {
                             return Err(ConnectionProfileError::MySqlNamedPipeRequiresNonTls);
                         }
                     }
@@ -167,16 +169,8 @@ impl ConnectionProfile {
         self.config.database_type()
     }
 
-    pub fn postgres_config(&self) -> Option<&PostgresConnectionConfig> {
-        self.config.as_postgres()
-    }
-
     pub fn sqlite_config(&self) -> Option<&SqliteConnectionConfig> {
         self.config.as_sqlite()
-    }
-
-    pub fn mysql_config(&self) -> Option<&MySqlConnectionConfig> {
-        self.config.as_mysql()
     }
 
     pub fn display_name(&self) -> &str {

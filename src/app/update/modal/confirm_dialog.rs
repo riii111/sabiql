@@ -12,7 +12,7 @@ pub(in crate::update) fn scroll_confirm_dialog(
     state: &mut AppState,
     direction: ScrollDirection,
     amount: ScrollAmount,
-) -> Vec<Effect> {
+) {
     match amount {
         ScrollAmount::Line => {
             state.confirm_dialog.scroll_preview(direction);
@@ -22,7 +22,6 @@ pub(in crate::update) fn scroll_confirm_dialog(
             "unsupported ConfirmDialog scroll: {direction:?} {amount:?}"
         ),
     }
-    vec![]
 }
 
 pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Instant) -> Vec<Effect> {
@@ -70,32 +69,11 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
             state.session.disable_read_only();
             vec![]
         }
-        Some(ConfirmIntent::CsvExportRerunnable {
-            endpoint,
-            run_id,
-            export_query,
-            file_name,
-        }) => {
-            if reject_pending_mysql_connection_probe(state) {
-                return vec![];
-            }
-            if state.is_stale_query_run(&endpoint, run_id) {
-                vec![]
-            } else {
-                vec![Effect::ExportCsv {
-                    endpoint,
-                    run_id,
-                    query: export_query,
-                    file_name,
-                }]
-            }
-        }
         Some(ConfirmIntent::CsvExportCached {
             endpoint,
             run_id,
             file_name,
-            row_count,
-            snapshot,
+            result,
         }) => {
             if reject_pending_mysql_connection_probe(state) {
                 return vec![];
@@ -106,9 +84,7 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
                 vec![Effect::ExportCsvFromCache {
                     run_id,
                     file_name,
-                    columns: snapshot.columns,
-                    values: snapshot.values,
-                    row_count,
+                    result,
                 }]
             }
         }
@@ -119,14 +95,9 @@ pub(in crate::update) fn confirm_dialog_confirm(state: &mut AppState, now: Insta
 pub(in crate::update) fn confirm_dialog_cancel(state: &mut AppState) -> Vec<Effect> {
     let intent = state.confirm_dialog.take_intent();
     let canceling_current_csv_export = match &intent {
-        Some(
-            ConfirmIntent::CsvExportRerunnable {
-                endpoint, run_id, ..
-            }
-            | ConfirmIntent::CsvExportCached {
-                endpoint, run_id, ..
-            },
-        ) => !state.is_stale_query_run(endpoint, *run_id),
+        Some(ConfirmIntent::CsvExportCached {
+            endpoint, run_id, ..
+        }) => !state.is_stale_query_run(endpoint, *run_id),
         _ => false,
     };
     state.result_interaction.clear_write_preview();
